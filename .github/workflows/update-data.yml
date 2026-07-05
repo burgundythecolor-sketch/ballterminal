@@ -23,8 +23,7 @@ jobs:
       - name: Refresh historical tables
         run: node fetch_history.js
       - name: Rebuild SEO pages
-        # IMPORTANT: replace example.com with your real domain
-        run: node build_pages.js --base=https://example.com
+        run: node build_pages.js --base=https://ballterminal.com
       - name: Commit and push changes
         run: |
           git config user.name "ballterminal-bot"
