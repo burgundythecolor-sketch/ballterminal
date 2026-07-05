@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PL_TERMINAL // Caves of Qud style</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/3.4.1/tailwind.min.js"></script>
+<script>
+  // Authentic Caves of Qud palette (its "black" is a dark teal).
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: {
+          mono: ['"IBM Plex Mono"', '"JetBrains Mono"', '"Courier New"', 'Courier', 'monospace'],
+        },
+        colors: {
+          qud_k:  '#0f3b3a', // black (dark teal bg)
+          qud_K:  '#155352', // dark gray (teal gray)
+          qud_r:  '#a64a2e', // red
+          qud_R:  '#d74200', // bright red / orange-red
+          qud_o:  '#e99f10', // orange
+          qud_O:  '#ffb733', // bright orange
+          qud_w:  '#a19f52', // dark yellow / olive
+          qud_y:  '#cfc041', // yellow
+          qud_Y:  '#e6e6c3', // white
+          qud_g:  '#009403', // green
+          qud_G:  '#00c420', // bright green
+          qud_b:  '#0075a4', // blue
+          qud_B:  '#0198e1', // bright blue
+          qud_c:  '#77bfcf', // cyan
+          qud_C:  '#b1e5f0', // bright cyan
+          qud_m:  '#a24ac3', // magenta
+          qud_M:  '#cb4ac5', // bright magenta
+        },
+      },
+    },
+  };
+</script>
+<style>
+  html, body { background: #0f3b3a; }
+  * { -webkit-font-smoothing: antialiased; }
+  ::selection { background: #cfc041; color: #0f3b3a; }
+  @keyframes blink { 0%,49%{opacity:1} 50%,100%{opacity:0} }
+  .cursor { animation: blink 1s step-end infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .pulse { animation: pulse 1.3s ease-in-out infinite; }
+  /* faint CRT scanline wash, very subtle */
+  body::before {
+    content:""; position:fixed; inset:0; pointer-events:none; z-index:50;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,.14) 0 1px, transparent 1px 3px);
+    opacity:.35;
+  }
+  ::-webkit-scrollbar { width:8px; height:8px; }
+  ::-webkit-scrollbar-track { background:#0f3b3a; }
+  ::-webkit-scrollbar-thumb { background:#155352; }
+  ::-webkit-scrollbar-thumb:hover { background:#cfc041; }
+</style>
+</head>
+<body class="bg-qud_k text-qud_Y font-mono text-[13px] leading-relaxed antialiased">
+
+  <!-- ============ TOP BAR ============ -->
+  <header class="flex items-center justify-between border-b border-qud_K px-4 py-2 select-none">
+    <div class="flex items-center gap-2">
+      <span class="text-qud_G">&gt;_</span>
+      <span class="text-qud_C">PL</span><span class="text-qud_Y">_</span><span class="text-qud_o">TERMINAL</span>
+      <span class="text-qud_K">v</span><span class="text-qud_w">2.6.1</span>
+      <span class="text-qud_K">│</span>
+      <span class="text-qud_c">matchday</span> <span class="text-qud_M">[</span><span class="text-qud_y">38</span><span class="text-qud_M">]</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-qud_c">SEASON</span> <span class="text-qud_Y">2025</span><span class="text-qud_R">/</span><span class="text-qud_Y">26</span>
+      <span class="text-qud_K">::</span>
+      <span class="text-qud_G pulse">◉ CONNECTED</span>
+      <span class="text-qud_K">::</span>
+      <span id="clock" class="text-qud_O">--:--:--</span>
+    </div>
+  </header>
+
+  <div class="flex min-h-[calc(100vh-41px)]">
+
+    <!-- ============ SIDEBAR NAV ============ -->
+    <aside class="w-64 shrink-0 border-r border-qud_K p-4 select-none">
+      <div class="text-qud_m mb-3 text-[11px] tracking-widest">// NAVIGATION</div>
+      <nav class="space-y-1">
+        <a href="#" class="flex items-center gap-2 px-2 py-1 border-l-2 border-qud_O bg-qud_K/40">
+          <span class="text-qud_G">&gt;</span>
+          <span class="text-qud_M">[</span><span class="text-qud_y">01</span><span class="text-qud_M">]</span>
+          <span class="text-qud_C">LIVE_SCORES</span>
+          <span class="ml-auto text-qud_G text-[11px] pulse">◉</span>
+        </a>
+        <a href="#" class="flex items-center gap-2 px-2 py-1 border-l-2 border-transparent hover:border-qud_K hover:bg-qud_K/30">
+          <span class="text-qud_G">&gt;</span>
+          <span class="text-qud_m">[</span><span class="text-qud_w">02</span><span class="text-qud_m">]</span>
+          <span class="text-qud_c hover:text-qud_C">LEAGUE_TABLE</span>
+        </a>
+        <a href="#" class="flex items-center gap-2 px-2 py-1 border-l-2 border-transparent hover:border-qud_K hover:bg-qud_K/30">
+          <span class="text-qud_G">&gt;</span>
+          <span class="text-qud_m">[</span><span class="text-qud_w">03</span><span class="text-qud_m">]</span>
+          <span class="text-qud_b hover:text-qud_B">FIXTURES</span>
+        </a>
+        <a href="#" class="flex items-center gap-2 px-2 py-1 border-l-2 border-transparent hover:border-qud_K hover:bg-qud_K/30">
+          <span class="text-qud_G">&gt;</span>
+          <span class="text-qud_m">[</span><span class="text-qud_w">04</span><span class="text-qud_m">]</span>
+          <span class="text-qud_o hover:text-qud_O">TOP_SCORERS</span>
+        </a>
+        <a href="#" class="flex items-center gap-2 px-2 py-1 border-l-2 border-transparent hover:border-qud_K hover:bg-qud_K/30">
+          <span class="text-qud_G">&gt;</span>
+          <span class="text-qud_m">[</span><span class="text-qud_w">05</span><span class="text-qud_m">]</span>
+          <span class="text-qud_M hover:text-qud_m">TRANSFERS</span>
+        </a>
+        <a href="#" class="flex items-center gap-2 px-2 py-1 border-l-2 border-transparent hover:border-qud_K hover:bg-qud_K/30">
+          <span class="text-qud_G">&gt;</span>
+          <span class="text-qud_m">[</span><span class="text-qud_w">06</span><span class="text-qud_m">]</span>
+          <span class="text-qud_r hover:text-qud_R">INJURY_LIST</span>
+        </a>
+      </nav>
+
+      <div class="text-qud_m mt-6 mb-3 text-[11px] tracking-widest">// FILTERS</div>
+      <div class="space-y-1">
+        <div><span class="text-qud_G">$</span> <span class="text-qud_c">team</span> <span class="text-qud_Y">--all</span></div>
+        <div><span class="text-qud_G">$</span> <span class="text-qud_c">tz</span>   <span class="text-qud_B">GMT+0</span></div>
+        <div><span class="text-qud_G">$</span> <span class="text-qud_c">odds</span> <span class="text-qud_R">off</span></div>
+      </div>
+
+      <!-- ASCII status block -->
+      <div class="mt-6 text-[11px]">
+        <div class="text-qud_c">┌── <span class="text-qud_y">STATUS</span> ───────┐</div>
+        <div class="text-qud_c">│ <span class="text-qud_Y">live</span>    : <span class="text-qud_G">03</span>     │</div>
+        <div class="text-qud_c">│ <span class="text-qud_Y">pending</span> : <span class="text-qud_o">05</span>     │</div>
+        <div class="text-qud_c">│ <span class="text-qud_Y">done</span>    : <span class="text-qud_w">02</span>     │</div>
+        <div class="text-qud_c">└─────────────────┘</div>
+      </div>
+
+      <!-- flavor line, Qud-style item description -->
+      <div class="mt-5 text-[11px] leading-snug">
+        <span class="text-qud_C">&amp;C</span><span class="text-qud_c"> a humming </span><span class="text-qud_O">brass</span><span class="text-qud_c"> data-slate</span>
+        <span class="text-qud_w"> flickers with match telemetry.</span>
+      </div>
+
+      <div class="mt-4">
+        <span class="text-qud_G">&gt;</span> <span class="text-qud_Y">_</span><span class="cursor text-qud_C">█</span>
+      </div>
+    </aside>
+
+    <!-- ============ MAIN FEED ============ -->
+    <main class="flex-1 p-5 overflow-auto">
+
+      <!-- command line -->
+      <div class="mb-4 select-none">
+        <span class="text-qud_G">&gt;</span>
+        <span class="text-qud_O">run</span>
+        <span class="text-qud_C">live_match_tracker</span>
+        <span class="text-qud_y">--refresh</span><span class="text-qud_R">=</span><span class="text-qud_G">15s</span>
+        <span class="text-qud_w">// 3 fixtures in progress</span>
+      </div>
+
+      <div class="flex items-center gap-2 mb-3 text-[11px] tracking-widest select-none">
+        <span class="text-qud_M">[</span>
+        <span class="text-qud_C">LIVE_MATCH_TRACKER</span>
+        <span class="text-qud_M">]</span>
+        <span class="flex-1 border-b border-qud_K"></span>
+        <span class="text-qud_G pulse">◉ LIVE</span>
+      </div>
+
+      <!-- ===== LIVE MATCH GRID ===== -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+
+        <!-- CARD 1 -->
+        <div class="border border-qud_K bg-qud_K/25 hover:border-qud_O transition-colors">
+          <div class="flex items-center justify-between border-b border-qud_K px-3 py-1.5 text-[11px]">
+            <span class="text-qud_w">match_id <span class="text-qud_M">#</span><span class="text-qud_y">38104</span></span>
+            <span class="text-qud_G pulse">◉ 67'</span>
+          </div>
+          <div class="p-3 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-qud_R">Arsenal</span>
+              <span class="text-qud_G text-lg">2</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-qud_C">Man City</span>
+              <span class="text-qud_G text-lg">1</span>
+            </div>
+            <div class="border-t border-qud_K pt-2 text-[11px] space-y-0.5">
+              <div><span class="text-qud_o">&gt;</span> <span class="text-qud_y">45'</span> <span class="text-qud_G">⚽</span> <span class="text-qud_Y">Saka</span> <span class="text-qud_w">(assist Ødegaard)</span></div>
+              <div><span class="text-qud_o">&gt;</span> <span class="text-qud_y">58'</span> <span class="text-qud_G">⚽</span> <span class="text-qud_Y">Haaland</span> <span class="text-qud_c">(pen)</span></div>
+              <div><span class="text-qud_o">&gt;</span> <span class="text-qud_y">63'</span> <span class="text-qud_G">⚽</span> <span class="text-qud_Y">Martinelli</span></div>
+            </div>
+          </div>
+          <div class="flex justify-between border-t border-qud_K px-3 py-1.5 text-[11px] text-qud_w">
+            <span>xG <span class="text-qud_C">2.4</span> <span class="text-qud_K">-</span> <span class="text-qud_C">1.1</span></span>
+            <span>poss <span class="text-qud_B">48%</span></span>
+            <span class="text-qud_R">▮ RED 1</span>
+          </div>
+        </div>
+
+        <!-- CARD 2 -->
+        <div class="border border-qud_K bg-qud_K/25 hover:border-qud_O transition-colors">
+          <div class="flex items-center justify-between border-b border-qud_K px-3 py-1.5 text-[11px]">
+            <span class="text-qud_w">match_id <span class="text-qud_M">#</span><span class="text-qud_y">38105</span></span>
+            <span class="text-qud_G pulse">◉ 34'</span>
+          </div>
+          <div class="p-3 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-qud_R">Liverpool</span>
+              <span class="text-qud_G text-lg">0</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-qud_B">Chelsea</span>
+              <span class="text-qud_G text-lg">0</span>
+            </div>
+            <div class="border-t border-qud_K pt-2 text-[11px] space-y-0.5">
+              <div><span class="text-qud_o">&gt;</span> <span class="text-qud_y">12'</span> <span class="text-qud_y">▮</span> <span class="text-qud_Y">Caicedo</span> <span class="text-qud_w">yellow</span></div>
+              <div><span class="text-qud_o">&gt;</span> <span class="text-qud_y">28'</span> <span class="text-qud_O">⚠</span> <span class="text-qud_Y">Salah</span> <span class="text-qud_w">shot off post</span></div>
+              <div class="text-qud_w">&gt; awaiting_next_event<span class="cursor text-qud_C">█</span></div>
+            </div>
+          </div>
+          <div class="flex justify-between border-t border-qud_K px-3 py-1.5 text-[11px] text-qud_w">
+            <span>xG <span class="text-qud_C">0.9</span> <span class="text-qud_K">-</span> <span class="text-qud_C">0.4</span></span>
+            <span>poss <span class="text-qud_B">61%</span></span>
+            <span class="text-qud_y">▮ YEL 2</span>
+          </div>
+        </div>
+
+        <!-- CARD 3 -->
+        <div class="border border-qud_K bg-qud_K/25 hover:border-qud_O transition-colors">
+          <div class="flex items-center justify-between border-b border-qud_K px-3 py-1.5 text-[11px]">
+            <span class="text-qud_w">match_id <span class="text-qud_M">#</span><span class="text-qud_y">38106</span></span>
+            <span class="text-qud_G pulse">◉ 81'</span>
+          </div>
+          <div class="p-3 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-qud_Y">Newcastle</span>
+              <span class="text-qud_G text-lg">3</span>
+            </div>
+            <div class="flex items-center justify-between">
+              <span class="text-qud_C">Spurs</span>
+              <span class="text-qud_G text-lg">2</span>
+            </div>
+            <div class="border-t border-qud_K pt-2 text-[11px] space-y-0.5">
+              <div><span class="text-qud_o">&gt;</span> <span class="text-qud_y">71'</span> <span class="text-qud_G">⚽</span> <span class="text-qud_Y">Isak</span></div>
+              <div><span class="text-qud_o">&gt;</span> <span class="text-qud_y">76'</span> <span class="text-qud_G">⚽</span> <span class="text-qud_Y">Son</span></div>
+              <div><span class="text-qud_o">&gt;</span> <span class="text-qud_y">79'</span> <span class="text-qud_G">⚽</span> <span class="text-qud_Y">Gordon</span> <span class="text-qud_M">(winner?)</span></div>
+            </div>
+          </div>
+          <div class="flex justify-between border-t border-qud_K px-3 py-1.5 text-[11px] text-qud_w">
+            <span>xG <span class="text-qud_C">2.9</span> <span class="text-qud_K">-</span> <span class="text-qud_C">2.2</span></span>
+            <span>poss <span class="text-qud_B">52%</span></span>
+            <span class="text-qud_G">+5 added</span>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ===== MINI TABLE ===== -->
+      <div class="flex items-center gap-2 mt-8 mb-3 text-[11px] tracking-widest select-none">
+        <span class="text-qud_M">[</span>
+        <span class="text-qud_C">LEAGUE_TABLE</span>
+        <span class="text-qud_M">]</span>
+        <span class="text-qud_y">--top</span><span class="text-qud_R">=</span><span class="text-qud_G">5</span>
+        <span class="flex-1 border-b border-qud_K"></span>
+      </div>
+
+      <div class="border border-qud_K bg-qud_K/25 overflow-x-auto">
+        <table class="w-full text-[12px]">
+          <thead class="border-b border-qud_K">
+            <tr class="text-left text-qud_c">
+              <th class="px-3 py-2 font-normal">#</th>
+              <th class="px-3 py-2 font-normal">CLUB</th>
+              <th class="px-3 py-2 font-normal text-center">P</th>
+              <th class="px-3 py-2 font-normal text-center">W</th>
+              <th class="px-3 py-2 font-normal text-center">D</th>
+              <th class="px-3 py-2 font-normal text-center">L</th>
+              <th class="px-3 py-2 font-normal text-center">GD</th>
+              <th class="px-3 py-2 font-normal text-center text-qud_y">PTS</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="border-b border-qud_K hover:bg-qud_k">
+              <td class="px-3 py-1.5 text-qud_G">01</td>
+              <td class="px-3 py-1.5 text-qud_R">Arsenal</td>
+              <td class="px-3 py-1.5 text-center text-qud_w">37</td>
+              <td class="px-3 py-1.5 text-center text-qud_Y">26</td>
+              <td class="px-3 py-1.5 text-center text-qud_Y">7</td>
+              <td class="px-3 py-1.5 text-center text-qud_Y">4</td>
+              <td class="px-3 py-1.5 text-center text-qud_G">+48</td>
+              <td class="px-3 py-1.5 text-center text-qud_y">85</td>
+            </tr>
+            <tr class="border-b border-qud_K hover:bg-qud_k">
+              <td class="px-3 py-1.5 text-qud_G">02</td>
+              <td class="px-3 py-1.5 text-qud_C">Man City</td>
+              <td class="px-3 py-1.5 text-center text-qud_w">37</td>
+              <td class="px-3 py-1.5 text-center text-qud_Y">25</td>
+              <td class="px-3 py-1.5 text-center text-qud_Y">6</td>
+              <td class="px-3 py-1.5 text-center text-qud_Y">6</td>
+              <td class="px-3 py-1.5 text-center text-qud_G">+44</td>
+              <td class="px-3 py-1.5 text-center text-qud_y">81</td>
+            </tr>
+            <tr class="border-b border-qud_K hover:bg-qud_k">
+              <td class="px-3 py-1.5 text-qud_G">03</td>
+              <td class="px-3 py-1.5 text-qud_R">Liverpool</td>
+              <td class="px-3 py-1.5 text-center text-qud_w">37</td>
+              <td class="px-3 py-1.5 text-center text-qud_Y">23</td>
+              <td class="px-3 py-1.5 text-center text-qud_Y">8</td>
+              <td class="px-3 py-1.5 text-center text-qud_Y">6</td>
+              <td class="px-3 py-1.5 text-center text-qud_G">+37</td>
+              <td class="px-3 py-1.5 text-center text-qud_y">77</td>
+            </tr>
+            <tr class="border-b border-qud_K hover:bg-qud_k">
+              <td class="px-3 py-1.5 text-qud_o">04</td>
+              <td class="px-3 py-1.5 text-qud_Y">Newcastle</td>
+              <td class="px-3 py-1.5 text-center text-qud_w">37</td>
+              <td class="px-3 py-1.5 text-center text-qud_Y">21</td>
+              <td class="px-3 py-1.5 text-center text-qud_Y">6</td>
+              <td class="px-3 py-1.5 text-center text-qud_Y">10</td>
+              <td class="px-3 py-1.5 text-center text-qud_G">+22</td>
+              <td class="px-3 py-1.5 text-center text-qud_y">69</td>
+            </tr>
+            <tr class="hover:bg-qud_k">
+              <td class="px-3 py-1.5 text-qud_w">05</td>
+              <td class="px-3 py-1.5 text-qud_B">Chelsea</td>
+              <td class="px-3 py-1.5 text-center text-qud_w">37</td>
+              <td class="px-3 py-1.5 text-center text-qud_Y">20</td>
+              <td class="px-3 py-1.5 text-center text-qud_Y">7</td>
+              <td class="px-3 py-1.5 text-center text-qud_Y">10</td>
+              <td class="px-3 py-1.5 text-center text-qud_G">+18</td>
+              <td class="px-3 py-1.5 text-center text-qud_y">67</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- footer command line -->
+      <div class="mt-6 select-none">
+        <span class="text-qud_G">&gt;</span> <span class="text-qud_Y">_</span><span class="cursor text-qud_C">█</span>
+        <span class="ml-4 text-[11px] text-qud_w">EOF // press <span class="text-qud_O">[r]</span> refresh, <span class="text-qud_O">[q]</span> quit</span>
+      </div>
+
+    </main>
+  </div>
+
+<script>
+  function tick() {
+    const d = new Date(), p = n => String(n).padStart(2,'0');
+    document.getElementById('clock').textContent =
+      p(d.getHours())+':'+p(d.getMinutes())+':'+p(d.getSeconds());
+  }
+  tick(); setInterval(tick, 1000);
+</script>
+</body>
+</html>
