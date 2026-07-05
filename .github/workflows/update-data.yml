@@ -1,0 +1,34 @@
+name: Update ballterminal data
+# Runs every morning: refreshes season data (official player stats,
+# results with minutes/assists), history, and the SEO pages, then
+# commits — GitHub Pages redeploys automatically. Also runnable by hand
+# from the Actions tab ("Run workflow").
+on:
+  schedule:
+    - cron: "0 6 * * *"   # daily, 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Refresh season data
+        run: node fetch_data.js
+      - name: Refresh historical tables
+        run: node fetch_history.js
+      - name: Rebuild SEO pages
+        # IMPORTANT: replace example.com with your real domain
+        run: node build_pages.js --base=https://example.com
+      - name: Commit and push changes
+        run: |
+          git config user.name "ballterminal-bot"
+          git config user.email "ballterminal-bot@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "data update $(date -u +%Y-%m-%d)"
+          git push
