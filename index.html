@@ -1272,15 +1272,16 @@ async function seasonMatches() {
     try {
       const [fx, data] = await Promise.all([FPL.allFixtures(), FPL.bootstrap()]);
       const tn = Object.fromEntries(data.teams.map(t => [t.id, t.name]));
-      const rows = fx.filter(f => f.finished && f.event).map(f => ({
+      const rows = fx.filter(f => f.event).map(f => ({
         date: (f.kickoff_time ?? "").slice(0, 10),
         home: tn[f.team_h] ?? "?", away: tn[f.team_a] ?? "?",
         hs: f.team_h_score, as: f.team_a_score,
+        status: f.finished ? "FT" : f.started ? "LIVE" : "NS",
       }));
       if (rows.length) return rows;
     } catch (err) { console.warn("[team]", err.message); }
   }
-  return Object.values(LIVE?.results ?? MOCK.results).flat().filter(m => m.status === "FT");
+  return Object.values(LIVE?.results ?? MOCK.results).flat();
 }
 
 /* how likely two name spellings refer to the same player:
@@ -1427,8 +1428,10 @@ async function openTeam(team, pos) {
   tv.innerHTML = '<div class="loading">loading team</div>';
 
   const [all, squad] = await Promise.all([seasonMatches(), squadStats(team)]);
-  const matches = all.filter(m => m.home === team || m.away === team)
+  const involved = all.filter(m => m.home === team || m.away === team)
     .sort((a, b) => (a.date < b.date ? -1 : 1));
+  const matches = involved.filter(m => m.status === "FT");
+  const upcoming = involved.filter(m => m.status === "NS").slice(0, 10);
   let w = 0, d = 0, l = 0, gf = 0, ga = 0, cs = 0;
   let hw = 0, hd = 0, hl = 0, aw = 0, ad = 0, al = 0;
   const played = [];
@@ -1455,6 +1458,16 @@ async function openTeam(team, pos) {
   teamSort = squad?.full ? "min" : "g";
   const squadHtml = `<div id="team-squad">${squadPanel(squad, teamSort)}</div>`;
 
+  const fixturesHtml = `<div class="panel"><div class="panel-head"><span><span class="accent" style="color:var(--amber)">◷</span>UPCOMING FIXTURES</span><span>${upcoming.length}</span></div>
+    ${upcoming.length ? upcoming.map(m => `
+      <div class="res-row">
+        <span class="res-r" style="color:var(--text-faint)">·</span>
+        <span class="res-date">${esc(m.date)}</span>
+        <span>${m.home === team ? "v " + esc(m.away) : "@ " + esc(m.home)}</span>
+        <span class="res-score" style="color:var(--text-faint)">–:–</span>
+      </div>`).join("")
+    : '<div class="pal-empty">no upcoming fixtures scheduled — next season\'s list appears here once released</div>'}</div>`;
+
   const resultsHtml = `<div class="panel"><div class="panel-head"><span><span class="accent" style="color:var(--green)">❯</span>RESULTS</span><span>${played.length}</span></div>
     ${[...played].reverse().map(m => `
       <div class="res-row">
@@ -1474,7 +1487,7 @@ async function openTeam(team, pos) {
     <div class="stat-tiles">${tiles}</div>
     <div style="font-family:var(--mono);font-size:11px;color:var(--text-dim);margin-bottom:14px">
       home ${hw}-${hd}-${hl} · away ${aw}-${ad}-${al}</div>
-    <div class="team-grid">${squadHtml}${resultsHtml}</div>`;
+    <div class="team-grid">${squadHtml}<div style="display:grid;gap:14px;align-content:start">${fixturesHtml}${resultsHtml}</div></div>`;
   $("#team-back").addEventListener("click", closeTeamView);
 }
 
