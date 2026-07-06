@@ -41,6 +41,19 @@ function loadLive() {
   try { return JSON.parse(fs.readFileSync(path.join(__dirname, "data", "live.json"), "utf8")); }
   catch { return null; }
 }
+function loadMatches() {
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, "data", "season-matches.json"), "utf8")); }
+  catch { return {}; }
+}
+function loadRecords() {
+  try {
+    const src = fs.readFileSync(path.join(__dirname, "data", "records.js"), "utf8");
+    const m = /window\.RECORDS = (\{[\s\S]*\});/.exec(src);
+    /* records.js uses JS object syntax; evaluate it in a sandbox-free way */
+    return m ? new Function("return " + m[1])() : null;
+  } catch { return null; }
+}
+const clubSlug = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 /* ------------------------- template ------------------------- */
 const CSS = `body{background:#0a0d13;color:#cdd6e4;font-family:-apple-system,Segoe UI,sans-serif;
@@ -89,6 +102,8 @@ function main() {
   fs.mkdirSync(OUT, { recursive: true });
   const history = loadHistory();
   const live = loadLive();
+  const seasonMatches = loadMatches();
+  const records = loadRecords();
   const seasons = Object.keys(history).sort();
   const urls = [];
 
@@ -144,7 +159,11 @@ ${i < seasons.length - 1 ? `<a href="premier-league-table-${slug(seasons[i + 1])
       canonical,
       h1: `Premier League Table ${label} — Final Standings`,
       lede,
-      body: tableHtml(rows, rel) + superlatives(label, rows, sup) + nav,
+      body: tableHtml(rows, rel) + superlatives(label, rows, sup) +
+        (seasonMatches[label]?.length
+          ? `<h2>Club season pages — ${esc(label)}</h2><p style="line-height:2">${rows.map((r) =>
+              `<a href="${clubSlug(r.team)}-${slug(label)}.html">${esc(r.team)}</a>`).join(" · ")}</p>`
+          : "") + nav,
       jsonld: {
         "@context": "https://schema.org", "@type": "Dataset",
         name: `Premier League ${label} final table`,
@@ -155,6 +174,70 @@ ${i < seasons.length - 1 ? `<a href="premier-league-table-${slug(seasons[i + 1])
     }));
     urls.push(canonical);
   });
+
+  /* per-club season pages ("arsenal 1997/98 results") */
+  let clubPages = 0;
+  for (const label of seasons) {
+    const ms = seasonMatches[label];
+    if (!ms?.length) continue;
+    const { rows } = history[label];
+    for (const r of rows) {
+      const team = r.team;
+      const games = ms.filter((m) => m.h === team || m.a === team)
+        .sort((x, y) => ((x.d ?? "") < (y.d ?? "") ? -1 : 1));
+      if (!games.length) continue;
+      const pts = r.w * 3 + r.d;
+      const file = `${clubSlug(team)}-${slug(label)}.html`;
+      const canonical = `${BASE}/pages/${file}`;
+      const lede = `${team}'s ${label} Premier League season: finished ${r.pos}${["st","nd","rd"][r.pos-1] ?? "th"} with ${pts} points (${r.w} wins, ${r.d} draws, ${r.l} defeats), scoring ${r.gf} and conceding ${r.ga}. Every result below.`;
+      const prevSeason = seasons[seasons.indexOf(label) - 1];
+      const nextSeason = seasons[seasons.indexOf(label) + 1];
+      const clubLink = (s) => s && history[s]?.rows.some((x) => x.team === team) && seasonMatches[s]?.length
+        ? `<a href="${clubSlug(team)}-${slug(s)}.html">${esc(team)} ${esc(s)}</a>` : "";
+      const body = `<table>
+<thead><tr><th class="l"></th><th class="l">Date</th><th class="l">Fixture</th><th>Score</th></tr></thead>
+<tbody>${games.map((m) => {
+        const isH = m.h === team;
+        const f = isH ? m.hs : m.as, g = isH ? m.as : m.hs;
+        const res = f > g ? "W" : f < g ? "L" : "D";
+        const c = res === "W" ? "#2dffa3" : res === "L" ? "#ff5370" : "#ffb347";
+        return `<tr><td class="l" style="color:${c};font-weight:700">${res}</td><td class="l">${esc(m.d ?? "")}</td><td class="l">${isH ? `<b>${esc(team)}</b> v ${esc(m.a)}` : `${esc(m.h)} v <b>${esc(team)}</b>`}</td><td>${m.hs}–${m.as}</td></tr>`;
+      }).join("\n")}</tbody></table>
+<div class="nav">${clubLink(prevSeason)}<a href="premier-league-table-${slug(label)}.html">${esc(label)} full table</a>${clubLink(nextSeason)}</div>`;
+      fs.writeFileSync(path.join(OUT, file), page({
+        title: `${team} ${label} — Results, Record & Final Position`,
+        desc: lede, canonical,
+        h1: `${team} — ${label} Season`, lede, body,
+        jsonld: { "@context": "https://schema.org", "@type": "Dataset",
+          name: `${team} ${label} Premier League results`, description: lede, url: canonical,
+          keywords: [`${team.toLowerCase()} ${label} results`, `${team.toLowerCase()} ${label} season`, `${team.toLowerCase()} fixtures ${label}`] },
+      }));
+      urls.push(canonical);
+      clubPages++;
+    }
+  }
+  if (clubPages) console.log(`      ${clubPages} club season pages`);
+  else console.log("      no season-matches.json yet — run fetch_history.js to enable club pages");
+
+  /* all-time records page */
+  if (records) {
+    const file = "premier-league-records.html";
+    const canonical = `${BASE}/pages/${file}`;
+    const lede = "All-time Premier League records: most goals, most assists, most points, biggest wins, longest unbeaten runs and more — player and team records from 1992/93 to today.";
+    const recTable = (list) => `<table><thead><tr><th class="l">Record</th><th class="l">Holder</th><th class="l">Detail</th></tr></thead>
+<tbody>${list.map((r) => `<tr><td class="l">${esc(r.k)}</td><td class="l"><b>${esc(r.v)}</b></td><td class="l" style="color:#5b6577">${esc(r.d)}</td></tr>`).join("\n")}</tbody></table>`;
+    fs.writeFileSync(path.join(OUT, file), page({
+      title: "Premier League Records — All-Time Player & Team Records",
+      desc: lede, canonical,
+      h1: "Premier League All-Time Records", lede,
+      body: `<h2>Player records</h2>${recTable(records.player)}<h2>Team records</h2>${recTable(records.team)}
+<div class="nav"><a href="index.html">Tables for every season</a></div>`,
+      jsonld: { "@context": "https://schema.org", "@type": "Dataset",
+        name: "Premier League all-time records", description: lede, url: canonical,
+        keywords: ["premier league records", "most premier league goals", "premier league all time top scorers", "fastest premier league goal"] },
+    }));
+    urls.push(canonical);
+  }
 
   /* current-season stat pages from live.json */
   if (live?.players && live?.meta?.season) {
@@ -198,10 +281,11 @@ ${i < seasons.length - 1 ? `<a href="premier-league-table-${slug(seasons[i + 1])
   }));
   urls.push(hubCanonical);
 
-  /* sitemap + robots */
+  /* sitemap (with lastmod so crawlers see daily freshness) + robots */
+  const today = new Date().toISOString().slice(0, 10);
   fs.writeFileSync(path.join(__dirname, "sitemap.xml"),
     `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
-    [`${BASE}/index.html`, ...urls].map((u) => `  <url><loc>${u}</loc></url>`).join("\n") +
+    [`${BASE}/index.html`, ...urls].map((u) => `  <url><loc>${u}</loc><lastmod>${today}</lastmod></url>`).join("\n") +
     `\n</urlset>\n`);
   fs.writeFileSync(path.join(__dirname, "robots.txt"),
     `User-agent: *\nAllow: /\nSitemap: ${BASE}/sitemap.xml\n`);
