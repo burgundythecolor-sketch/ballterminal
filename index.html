@@ -12,6 +12,7 @@
 <link rel="canonical" href="https://ballterminal.com/">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#0a0d13">
+<link rel="preconnect" href="https://burgundythecolor--5dda15b6763d11f1a7071607ee4eb77e.web.val.run" crossorigin>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="64x64" href="icons/favicon-64.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -741,11 +742,17 @@ const FPL = {
     if (!/^https?:/.test(target)) target = CONFIG.FPL.BASE + target; // paths = FPL API
     return CONFIG.FPL.PROXY ? CONFIG.FPL.PROXY + encodeURIComponent(target) : target;
   },
-  async bootstrap() {
-    if (this._cache) return this._cache;
-    const res = await fetch(this.url("/bootstrap-static/"));
-    if (!res.ok) throw new Error("FPL API " + res.status);
-    return (this._cache = await res.json());
+  bootstrap() {
+    /* caches the in-flight promise so simultaneous callers (boot,
+       results, table, palette) share ONE download instead of racing */
+    if (!this._cache) {
+      this._cache = (async () => {
+        const res = await fetch(this.url("/bootstrap-static/"));
+        if (!res.ok) throw new Error("FPL API " + res.status);
+        return res.json();
+      })().catch(err => { this._cache = null; throw err; });
+    }
+    return this._cache;
   },
   _fixtures: {},
   /* /fixtures/?event={mw} verified (July 2026): [{ event, kickoff_time,
@@ -760,12 +767,15 @@ const FPL = {
     return (this._fixtures[mw] = await res.json());
   },
   _all: null, _allAt: 0,
-  async allFixtures() {
+  allFixtures() {
     if (this._all && Date.now() - this._allAt < 60000) return this._all;
-    const res = await fetch(this.url("/fixtures/"));
-    if (!res.ok) throw new Error("FPL API " + res.status);
     this._allAt = Date.now();
-    return (this._all = await res.json());
+    this._all = (async () => {
+      const res = await fetch(this.url("/fixtures/"));
+      if (!res.ok) throw new Error("FPL API " + res.status);
+      return res.json();
+    })().catch(err => { this._all = null; throw err; });
+    return this._all;
   },
   /* pulselive match detail (premierleague.com backend) — the source of
      goal MINUTES and paired ASSISTS. Joined to FPL via fixture.pulse_id.
@@ -828,8 +838,9 @@ const FPL = {
     const teamName   = Object.fromEntries(data.teams.map(t => [t.id, t.name]));
     const playerName = Object.fromEntries(data.elements.map(e => [e.id, e.web_name]));
     const label = (x) => (playerName[x.element] ?? "?") + (x.value > 1 ? ` ×${x.value}` : "");
-    const rows = [];
-    for (const f of fx) {
+    /* all matches fetch their detail in PARALLEL — one round trip
+       instead of ten sequential ones */
+    return Promise.all(fx.map(async f => {
       const row = {
         date:   (f.kickoff_time ?? "").slice(0, 10),
         status: f.finished ? "FT" : f.started ? "LIVE" : "NS",
@@ -862,9 +873,8 @@ const FPL = {
           row.assists = { h: stat("assists").h.map(label), a: stat("assists").a.map(label) };
         }
       }
-      rows.push(row);
-    }
-    return rows;
+      return row;
+    }));
   },
   /* -> Array<TableRow>, computed from the full fixture list */
   async table() {
@@ -1120,9 +1130,24 @@ async function renderResults(fresh = false) {
   $("#mw-prev").disabled = currentMW <= 1;
   $("#mw-next").disabled = currentMW >= CONFIG.MAX_MATCHWEEK;
   const grid = $("#results-grid");
-  if (!fresh) grid.innerHTML = '<div class="loading">fetching results</div>';
-  const matches = await DataService.getResults(currentMW, fresh);
+  const mw = currentMW;
+  /* paint instantly from the bundled snapshot, then refresh from the
+     live API in the background (stale-while-revalidate) */
+  const snapshot = CONFIG.FPL.ENABLED && LIVE?.results?.[mw];
+  if (snapshot?.length) {
+    paintResults(snapshot);
+    lastMatches = snapshot;
+  } else if (!fresh) {
+    grid.innerHTML = '<div class="loading">fetching results</div>';
+  }
+  const matches = await DataService.getResults(mw, fresh);
+  if (mw !== currentMW) return; // user moved to another matchweek meanwhile
   lastMatches = matches;
+  paintResults(matches);
+}
+
+function paintResults(matches) {
+  const grid = $("#results-grid");
   if (!matches.length) {
     grid.innerHTML = '<div class="loading" style="animation:none">no data for this matchweek — connect API or add mock fixtures</div>';
     return;
