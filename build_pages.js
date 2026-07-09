@@ -214,7 +214,7 @@ ${i < seasons.length - 1 ? `<a href="premier-league-table-${slug(seasons[i + 1])
         const c = res === "W" ? "#2dffa3" : res === "L" ? "#ff5370" : "#ffb347";
         return `<tr><td class="l" style="color:${c};font-weight:700">${res}</td><td class="l">${esc(m.d ?? "")}</td><td class="l">${isH ? `<b>${esc(team)}</b> v ${esc(m.a)}` : `${esc(m.h)} v <b>${esc(team)}</b>`}</td><td>${m.hs}–${m.as}</td></tr>`;
       }).join("\n")}</tbody></table>
-<div class="nav">${clubLink(prevSeason)}<a href="premier-league-table-${slug(label)}.html">${esc(label)} full table</a>${clubLink(nextSeason)}</div>`;
+<div class="nav">${clubLink(prevSeason)}<a href="premier-league-table-${slug(label)}.html">${esc(label)} full table</a><a href="${clubSlug(team)}-club-records.html">${esc(team)} club records</a>${clubLink(nextSeason)}</div>`;
       fs.writeFileSync(path.join(OUT, file), page({
         title: `${team} ${label} — Results, Record & Final Position`,
         desc: lede, canonical,
@@ -229,6 +229,100 @@ ${i < seasons.length - 1 ? `<a href="premier-league-table-${slug(seasons[i + 1])
   }
   if (clubPages) console.log(`      ${clubPages} club season pages`);
   else console.log("      no season-matches.json yet — run fetch_history.js to enable club pages");
+
+  /* per-club all-time record pages */
+  if (Object.keys(seasonMatches).length) {
+    const ord = (n) => n + (["st", "nd", "rd"][((n + 90) % 100 - 10) % 10 - 1] ?? "th");
+    const clubs = new Map();
+    for (const label of seasons) {
+      for (const r of history[label].rows) {
+        const pts = r.w * 3 + r.d;
+        const c = clubs.get(r.team) ?? { team: r.team, seasons: [], titles: 0,
+          w: 0, d: 0, l: 0, gf: 0, ga: 0,
+          bestPos: 99, worstPos: 0, maxPts: -1, minPts: 9999 };
+        c.seasons.push(label);
+        if (r.pos === 1) c.titles++;
+        c.w += r.w; c.d += r.d; c.l += r.l; c.gf += r.gf; c.ga += r.ga;
+        if (r.pos < c.bestPos) { c.bestPos = r.pos; c.bestPosSeason = label; }
+        if (r.pos > c.worstPos) { c.worstPos = r.pos; c.worstPosSeason = label; }
+        if (pts > c.maxPts) { c.maxPts = pts; c.maxPtsSeason = label; }
+        if (pts < c.minPts) { c.minPts = pts; c.minPtsSeason = label; }
+        clubs.set(r.team, c);
+      }
+    }
+    for (const [label, ms] of Object.entries(seasonMatches)) {
+      const run = new Map(); // team -> current streaks within this season
+      for (const m of [...ms].sort((a, b) => ((a.d ?? "") < (b.d ?? "") ? -1 : 1))) {
+        for (const side of ["h", "a"]) {
+          const team = side === "h" ? m.h : m.a;
+          const c = clubs.get(team);
+          if (!c) continue;
+          const f = side === "h" ? m.hs : m.as, g = side === "h" ? m.as : m.hs;
+          const res = f > g ? "W" : f < g ? "L" : "D";
+          const margin = f - g;
+          if (margin > 0 && (!c.bigWin || margin > c.bigWin.margin))
+            c.bigWin = { h: m.h, a: m.a, hs: m.hs, as: m.as, margin, season: label };
+          if (margin < 0 && (!c.bigLoss || margin < c.bigLoss.margin))
+            c.bigLoss = { h: m.h, a: m.a, hs: m.hs, as: m.as, margin, season: label };
+          const s = run.get(team) ?? { win: 0, unb: 0 };
+          s.win = res === "W" ? s.win + 1 : 0;
+          s.unb = res !== "L" ? s.unb + 1 : 0;
+          if (!c.winStreak || s.win > c.winStreak.len) c.winStreak = { len: s.win, season: label };
+          if (!c.unbeaten || s.unb > c.unbeaten.len) c.unbeaten = { len: s.unb, season: label };
+          run.set(team, s);
+        }
+      }
+    }
+    const row = (k, v) => `<tr><td class="l">${k}</td><td class="l"><b>${v}</b></td></tr>`;
+    for (const c of [...clubs.values()].sort((a, b) => a.team.localeCompare(b.team))) {
+      const file = `${clubSlug(c.team)}-club-records.html`;
+      const canonical = `${BASE}/pages/${file}`;
+      const span = `${c.seasons[0]}–${c.seasons[c.seasons.length - 1].slice(-5)}`;
+      const lede = `${c.team}'s Premier League records: ${c.seasons.length} season${c.seasons.length > 1 ? "s" : ""} (${span})` +
+        (c.titles ? `, ${c.titles} title${c.titles > 1 ? "s" : ""}` : "") +
+        `, best finish ${ord(c.bestPos)} (${c.bestPosSeason}), record points ${c.maxPts} (${c.maxPtsSeason}).`;
+      fs.writeFileSync(path.join(OUT, file), page({
+        title: `${c.team} — Premier League Club Records & History`,
+        desc: lede, canonical,
+        h1: `${c.team} — Premier League Club Records`, lede,
+        body: `<table><tbody>
+${row("Premier League seasons", `${c.seasons.length} (${esc(span)})`)}
+${c.titles ? row("Titles", c.titles) : ""}
+${row("Best finish", `${ord(c.bestPos)} — ${esc(c.bestPosSeason)}`)}
+${row("Worst finish", `${ord(c.worstPos)} — ${esc(c.worstPosSeason)}`)}
+${row("Most points in a season", `${c.maxPts} — ${esc(c.maxPtsSeason)}`)}
+${row("Fewest points in a season", `${c.minPts} — ${esc(c.minPtsSeason)}`)}
+${c.bigWin ? row("Biggest win", `${esc(c.bigWin.h)} ${c.bigWin.hs}–${c.bigWin.as} ${esc(c.bigWin.a)} — ${esc(c.bigWin.season)}`) : ""}
+${c.bigLoss ? row("Heaviest defeat", `${esc(c.bigLoss.h)} ${c.bigLoss.hs}–${c.bigLoss.as} ${esc(c.bigLoss.a)} — ${esc(c.bigLoss.season)}`) : ""}
+${c.winStreak?.len ? row("Longest winning run (single season)", `${c.winStreak.len} — ${esc(c.winStreak.season)}`) : ""}
+${c.unbeaten?.len ? row("Longest unbeaten run (single season)", `${c.unbeaten.len} — ${esc(c.unbeaten.season)}`) : ""}
+${row("All-time PL record", `${c.w + c.d + c.l} played · ${c.w}W ${c.d}D ${c.l}L · ${c.gf} scored, ${c.ga} conceded`)}
+</tbody></table>
+<h2>${esc(c.team)} season by season</h2>
+<p style="line-height:2">${c.seasons.map((s) =>
+        `<a href="${clubSlug(c.team)}-${slug(s)}.html">${esc(s)}</a>`).join(" · ")}</p>
+<div class="nav"><a href="premier-league-clubs.html">All clubs</a><a href="index.html">Season tables</a></div>`,
+        jsonld: { "@context": "https://schema.org", "@type": "Dataset",
+          name: `${c.team} Premier League club records`, description: lede, url: canonical,
+          keywords: [`${c.team.toLowerCase()} premier league record`, `${c.team.toLowerCase()} biggest win`, `${c.team.toLowerCase()} best season`] },
+      }));
+      urls.push(canonical);
+    }
+    /* clubs index */
+    const file = "premier-league-clubs.html";
+    const canonical = `${BASE}/pages/${file}`;
+    fs.writeFileSync(path.join(OUT, file), page({
+      title: "Premier League Clubs — Records & History of Every Team",
+      desc: `Club records and season-by-season history for all ${clubs.size} teams to have played in the Premier League since 1992/93.`,
+      canonical, h1: "Every Premier League Club — Records & History",
+      lede: `All ${clubs.size} clubs to have appeared in the Premier League, with all-time records, best and worst seasons, biggest wins and streaks.`,
+      body: `<ul style="columns:2;line-height:2;font-size:15px">${[...clubs.values()].sort((a, b) => a.team.localeCompare(b.team)).map((c) =>
+        `<li><a href="${clubSlug(c.team)}-club-records.html">${esc(c.team)}</a> — ${c.seasons.length} season${c.seasons.length > 1 ? "s" : ""}${c.titles ? `, ${c.titles} title${c.titles > 1 ? "s" : ""}` : ""}</li>`).join("\n")}</ul>
+<div class="nav"><a href="premier-league-records.html">All-time records</a><a href="index.html">Season tables</a></div>`,
+    }));
+    urls.push(canonical);
+    console.log(`      ${clubs.size} club record pages`);
+  }
 
   /* all-time records page */
   if (records) {
