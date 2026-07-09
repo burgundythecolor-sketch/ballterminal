@@ -53,7 +53,15 @@ function loadRecords() {
     return m ? new Function("return " + m[1])() : null;
   } catch { return null; }
 }
-const clubSlug = (name) => name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+function loadLegends() {
+  try {
+    const src = fs.readFileSync(path.join(__dirname, "data", "legends.js"), "utf8");
+    const m = /window\.LEGENDS = (\{[\s\S]*\});/.exec(src);
+    return m ? new Function("return " + m[1])() : null;
+  } catch { return null; }
+}
+const clubSlug = (name) => name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 /* ------------------------- template ------------------------- */
 const CSS = `body{background:#0a0d13;color:#cdd6e4;font-family:-apple-system,Segoe UI,sans-serif;
@@ -104,6 +112,7 @@ function main() {
   const live = loadLive();
   const seasonMatches = loadMatches();
   const records = loadRecords();
+  const legends = loadLegends();
   const seasons = Object.keys(history).sort();
   const urls = [];
 
@@ -119,6 +128,8 @@ function main() {
     const att = [...rows].sort((a, b) => b.gf - a.gf)[0];
     const def = [...rows].sort((a, b) => a.ga - b.ga)[0];
     const items = [];
+    const gb = legends?.goldenBoot?.[label];
+    if (gb) items.push(`<b>Golden Boot:</b> ${esc(gb.name)} — ${gb.goals} goals`);
     if (sup?.biggestWin) {
       const b = sup.biggestWin;
       items.push(`<b>Biggest win:</b> ${esc(b.home)} ${b.hs}–${b.as} ${esc(b.away)}${b.date ? ` (${fmtDate(b.date)})` : ""}`);
@@ -235,6 +246,77 @@ ${i < seasons.length - 1 ? `<a href="premier-league-table-${slug(seasons[i + 1])
       jsonld: { "@context": "https://schema.org", "@type": "Dataset",
         name: "Premier League all-time records", description: lede, url: canonical,
         keywords: ["premier league records", "most premier league goals", "premier league all time top scorers", "fastest premier league goal"] },
+    }));
+    urls.push(canonical);
+  }
+
+  /* golden boot history + player legend pages */
+  if (legends?.goldenBoot) {
+    const gbSeasons = Object.keys(legends.goldenBoot).sort();
+    const file = "premier-league-golden-boot-winners.html";
+    const canonical = `${BASE}/pages/${file}`;
+    const lede = `Every Premier League Golden Boot winner from ${gbSeasons[0]} to ${gbSeasons[gbSeasons.length - 1]} — the league's top scorer for all ${gbSeasons.length} seasons, with goal totals.`;
+    fs.writeFileSync(path.join(OUT, file), page({
+      title: "Premier League Golden Boot Winners — Every Season's Top Scorer",
+      desc: lede, canonical,
+      h1: "Premier League Golden Boot Winners", lede,
+      body: `<table><thead><tr><th class="l">Season</th><th class="l">Top scorer</th><th>Goals</th></tr></thead>
+<tbody>${gbSeasons.map((s) => {
+        const g = legends.goldenBoot[s];
+        const link = history[s] ? `<a href="premier-league-table-${slug(s)}.html">${esc(s)}</a>` : esc(s);
+        return `<tr><td class="l">${link}</td><td class="l"><b>${esc(g.name)}</b></td><td>${g.goals}</td></tr>`;
+      }).join("\n")}</tbody></table>
+<div class="nav"><a href="premier-league-records.html">All-time records</a><a href="index.html">Tables for every season</a></div>`,
+      jsonld: { "@context": "https://schema.org", "@type": "Dataset",
+        name: "Premier League Golden Boot winners by season", description: lede, url: canonical,
+        keywords: ["premier league golden boot winners", "premier league top scorer by season", "epl golden boot list"] },
+    }));
+    urls.push(canonical);
+  }
+
+  if (legends?.players?.length) {
+    const holds = (name) => (records ? [...records.player, ...records.team] : [])
+      .filter((r) => r.v.includes(name)).map((r) => `${r.k.toLowerCase()} (${r.v.split("—")[1]?.trim() ?? ""})`);
+    for (const p of legends.players) {
+      const file = `${clubSlug(p.name)}-premier-league-stats.html`;
+      const canonical = `${BASE}/pages/${file}`;
+      const bits = [];
+      if (p.apps) bits.push(`${p.apps} appearances`);
+      if (p.goals) bits.push(`${p.goals} goals`);
+      if (p.assists) bits.push(`${p.assists} assists`);
+      if (p.cs) bits.push(`${p.cs} clean sheets`);
+      const rec = holds(p.name);
+      const lede = `${p.name}'s complete Premier League career (${p.span}): ${bits.join(", ")}. ${p.note}`;
+      fs.writeFileSync(path.join(OUT, file), page({
+        title: `${p.name} — Premier League Career Stats (Goals, Assists, Appearances)`,
+        desc: lede, canonical,
+        h1: `${p.name} — Premier League Career Stats`, lede,
+        body: `<table><tbody>
+<tr><td class="l">Premier League career</td><td class="l"><b>${esc(p.span)}</b></td></tr>
+${p.apps ? `<tr><td class="l">Appearances</td><td class="l"><b>${p.apps}</b></td></tr>` : ""}
+${p.goals ? `<tr><td class="l">Goals</td><td class="l"><b>${p.goals}</b></td></tr>` : ""}
+${p.assists ? `<tr><td class="l">Assists</td><td class="l"><b>${p.assists}</b></td></tr>` : ""}
+${p.cs ? `<tr><td class="l">Clean sheets</td><td class="l"><b>${p.cs}</b></td></tr>` : ""}
+</tbody></table>
+${rec.length ? `<h2>All-time records held</h2><ul style="line-height:1.9">${rec.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>` : ""}
+<div class="nav"><a href="premier-league-records.html">All-time records</a><a href="premier-league-golden-boot-winners.html">Golden Boot winners</a></div>`,
+        jsonld: { "@context": "https://schema.org", "@type": "ProfilePage",
+          mainEntity: { "@type": "Person", name: p.name, description: lede },
+          url: canonical },
+      }));
+      urls.push(canonical);
+    }
+    /* legends index for internal linking */
+    const file = "premier-league-legends.html";
+    const canonical = `${BASE}/pages/${file}`;
+    fs.writeFileSync(path.join(OUT, file), page({
+      title: "Premier League Legends — Career Stats of the Greats",
+      desc: "Career Premier League statistics for the league's greatest players: Shearer, Henry, Rooney, Giggs, Čech and more.",
+      canonical, h1: "Premier League Legends — Career Stats",
+      lede: "Complete Premier League career numbers for the greats of the competition. Every player below has finished their Premier League chapter, so these figures are final.",
+      body: `<ul style="columns:2;line-height:2;font-size:15px">${legends.players.map((p) =>
+        `<li><a href="${clubSlug(p.name)}-premier-league-stats.html">${esc(p.name)}</a> — ${p.goals ? p.goals + " goals" : p.cs ? p.cs + " clean sheets" : p.apps + " apps"}</li>`).join("\n")}</ul>
+<div class="nav"><a href="premier-league-golden-boot-winners.html">Golden Boot winners</a><a href="premier-league-records.html">All-time records</a></div>`,
     }));
     urls.push(canonical);
   }
