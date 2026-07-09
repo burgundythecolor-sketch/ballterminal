@@ -185,6 +185,16 @@
   .rw { color: var(--green); } .rd { color: var(--amber); } .rl { color: var(--red); }
   .res-date { font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); width: 78px; }
   .res-score { font-family: var(--mono); margin-left: auto; }
+  .arch-link {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px 18px; border-bottom: 1px solid rgba(31,37,52,.55);
+    text-decoration: none; color: inherit; transition: background .12s;
+  }
+  .arch-link:last-child { border-bottom: none; }
+  .arch-link:hover { background: rgba(56,214,255,.05); }
+  .arch-link .go { font-family: var(--mono); color: var(--text-faint); }
+  .arch-link:hover .go { color: var(--cyan); }
+
   th.sortable { cursor: pointer; }
   th.sortable:hover { color: var(--text); }
   th.sortable.sorted { color: var(--cyan); }
@@ -309,6 +319,7 @@
       <button class="tab" data-tab="players"><span class="key">[3]</span>PLAYERS</button>
       <button class="tab" data-tab="transfers"><span class="key">[4]</span>TRANSFERS</button>
       <button class="tab" data-tab="records"><span class="key">[5]</span>RECORDS</button>
+      <button class="tab" data-tab="archives"><span class="key">[6]</span>ARCHIVES</button>
     </nav>
     <div class="clock"><span class="pulse">●</span> <span id="clock">--:--:--</span></div>
   </div>
@@ -397,13 +408,22 @@
       compiled from official premier league records · includes 2025/26</div>
   </section>
 
+  <!-- ============ ARCHIVES ============ -->
+  <section id="sec-archives" class="section">
+    <div class="sec-head">
+      <span class="sec-title">ARCHIVES</span>
+      <span class="sec-sub">deep pages · every season, club and legend</span>
+    </div>
+    <div class="stat-grid" id="archives-grid"></div>
+  </section>
+
 </main>
 
 <div class="statusbar">
   <div class="statusbar-inner">
     <span>SRC: <span id="src-indicator" class="warn">MOCK_DATA</span></span>
     <span>LAT: <span id="latency" class="ok">--</span></span>
-    <span class="right">[/] search · [1-5] switch · ← → matchweek</span>
+    <span class="right">[/] search · [1-6] switch · ← → matchweek</span>
   </div>
 </div>
 
@@ -1590,6 +1610,34 @@ function renderRecords() {
     </div>`).join("");
 }
 
+/* ---------- archives (links into the static deep pages) ---------- */
+function renderArchives() {
+  const hist = (typeof window !== "undefined" && window.HISTORY) || {};
+  const seasons = Object.keys(hist).sort().reverse();
+  const sslug = s => s.replace("/", "-");
+  const link = (href, title, subtitle) => `
+    <a class="arch-link" href="${href}">
+      <div class="leader-info">
+        <div class="leader-name">${esc(title)}</div>
+        <div class="leader-club">${esc(subtitle)}</div>
+      </div><span class="go">▸</span>
+    </a>`;
+  $("#archives-grid").innerHTML = `
+    <div class="panel">
+      <div class="panel-head"><span><span class="accent" style="color:var(--cyan)">★</span>HALL OF FAME</span><span></span></div>
+      ${link("pages/premier-league-records.html", "All-time records", "player & team records since 1992/93")}
+      ${link("pages/premier-league-golden-boot-winners.html", "Golden Boot winners", "every season's top scorer")}
+      ${link("pages/premier-league-legends.html", "Legends", "career stats of the greats — Shearer to De Bruyne")}
+      ${link("pages/index.html", "Full archive hub", "every table, club season and stat page")}
+    </div>
+    <div class="panel">
+      <div class="panel-head"><span><span class="accent" style="color:var(--green)">▤</span>SEASON ARCHIVE</span><span>${seasons.length}</span></div>
+      ${seasons.length
+        ? seasons.map(s => link(`pages/premier-league-table-${sslug(s)}.html`, s, `${hist[s].rows[0].team} champions`)).join("")
+        : '<div class="pal-empty">season archive appears once data/history.js is generated</div>'}
+    </div>`;
+}
+
 /* ---------- transfers ---------- */
 let transferFilter = "all";
 let transferCache = null;
@@ -1632,6 +1680,7 @@ const SECTIONS = {
   players:   { el:"#sec-players",   render: renderPlayers,   loaded:false },
   transfers: { el:"#sec-transfers", render: renderTransfers, loaded:false },
   records:   { el:"#sec-records",   render: renderRecords,   loaded:false },
+  archives:  { el:"#sec-archives",  render: renderArchives,  loaded:false },
 };
 
 function switchTab(name) {
@@ -1650,7 +1699,7 @@ document.getElementById("nav").addEventListener("click", e => {
 document.addEventListener("keydown", e => {
   if (e.target.matches?.("input, textarea")) return;
   if ($("#palette").classList.contains("open")) return; // palette owns keys
-  const map = { "1":"results", "2":"table", "3":"players", "4":"transfers", "5":"records" };
+  const map = { "1":"results", "2":"table", "3":"players", "4":"transfers", "5":"records", "6":"archives" };
   if (map[e.key]) switchTab(map[e.key]);
   if (document.querySelector("#sec-results.active")) {
     if (e.key === "ArrowLeft"  && currentMW > 1)                   { currentMW--; renderResults(); }
@@ -1689,6 +1738,7 @@ async function palItems() {
     { tag: "SECTION", label: "player stats", act: () => switchTab("players") },
     { tag: "SECTION", label: "transfer wire", act: () => switchTab("transfers") },
     { tag: "SECTION", label: "all-time records", act: () => switchTab("records") },
+    { tag: "SECTION", label: "archives", act: () => switchTab("archives") },
   ];
   for (const s of Object.keys((typeof window !== "undefined" && window.HISTORY) || {}).sort().reverse())
     items.push({ tag: "SEASON", label: `${s} final table`, act: () => {
