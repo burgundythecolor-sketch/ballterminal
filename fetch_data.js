@@ -269,7 +269,31 @@ function computeTransfers(boot, max = 25) {
       src: "FPL",
       time: relTime(e.news_added),
       note: e.news,
+      _date: e.news_added ?? null,
     }));
+}
+
+/* accumulate confirmed moves into a per-window archive so past
+   transfer windows become permanent pages */
+function archiveTransfers(transfers) {
+  const AFILE = path.join(OUT, "transfer-archive.json");
+  let arch = {};
+  try { arch = JSON.parse(fs.readFileSync(AFILE, "utf8")); } catch {}
+  for (const t of transfers) {
+    if (t.status !== "done") continue;
+    const iso = t._date ?? new Date().toISOString();
+    const m = new Date(iso).getUTCMonth() + 1, y = new Date(iso).getUTCFullYear();
+    const win = (m >= 6 && m <= 9) ? `summer-${y}` : (m >= 10 ? `winter-${y + 1}` : `winter-${y}`);
+    const w = (arch[win] ??= {
+      label: win.replace("summer-", "Summer ").replace("winter-", "Winter "),
+      moves: {},
+    });
+    const key = `${t.player}→${t.to}`;
+    if (!w.moves[key])
+      w.moves[key] = { player: t.player, from: t.from, to: t.to, note: t.note, date: iso.slice(0, 10) };
+  }
+  fs.writeFileSync(AFILE, JSON.stringify(arch));
+  return Object.keys(arch).length;
 }
 
 /* ---------------------------------------------------------------------
@@ -390,6 +414,7 @@ async function main() {
     })(),
     transfers: computeTransfers(boot),
   };
+  try { archiveTransfers(payload.transfers); } catch (err) { console.warn("      ! transfer archive:", err.message); }
   console.log(`      player stats: ${pulses.length
     ? `official (aggregated from ${pulses.length} matches` +
       (statExtras.length ? `, ${statExtras.length} filled from FPL stats)` : ")")

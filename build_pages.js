@@ -322,6 +322,55 @@ ${row("All-time PL record", `${c.w + c.d + c.l} played · ${c.w}W ${c.d}D ${c.l}
     }));
     urls.push(canonical);
     console.log(`      ${clubs.size} club record pages`);
+
+    /* all-time table — ranks every club by total points since 1992/93 */
+    const atFile = "all-time-premier-league-table.html";
+    const atCanonical = `${BASE}/pages/${atFile}`;
+    const ranked = [...clubs.values()].sort((a, b) =>
+      (b.w * 3 + b.d) - (a.w * 3 + a.d) || (b.gf - b.ga) - (a.gf - a.ga));
+    fs.writeFileSync(path.join(OUT, atFile), page({
+      title: "All-Time Premier League Table — Every Club Ranked Since 1992/93",
+      desc: `The all-time Premier League table: all ${clubs.size} clubs ranked by total points across every season since 1992/93.`,
+      canonical: atCanonical,
+      h1: "All-Time Premier League Table",
+      lede: `Every club to have played in the Premier League, ranked by total points accumulated across all ${seasons.length} seasons since 1992/93.`,
+      body: `<table><thead><tr><th class="l">#</th><th class="l">Club</th><th>Seasons</th><th>P</th><th>W</th><th>D</th><th>L</th><th>GF</th><th>GA</th><th>Pts</th></tr></thead>
+<tbody>${ranked.map((c, i) => `<tr><td class="l">${i + 1}</td><td class="l"><a href="${clubSlug(c.team)}-club-records.html">${esc(c.team)}</a></td><td>${c.seasons.length}</td><td>${c.w + c.d + c.l}</td><td>${c.w}</td><td>${c.d}</td><td>${c.l}</td><td>${c.gf}</td><td>${c.ga}</td><td><b>${c.w * 3 + c.d}</b></td></tr>`).join("\n")}</tbody></table>
+<div class="nav"><a href="premier-league-winners.html">Winners by season</a><a href="premier-league-clubs.html">Club records</a></div>`,
+      jsonld: { "@context": "https://schema.org", "@type": "Dataset",
+        name: "All-time Premier League table", url: atCanonical,
+        description: "Every Premier League club ranked by total points since 1992/93.",
+        keywords: ["all time premier league table", "premier league all time standings"] },
+    }));
+    urls.push(atCanonical);
+  }
+
+  /* winners list — champions by season + titles tally */
+  {
+    const file = "premier-league-winners.html";
+    const canonical = `${BASE}/pages/${file}`;
+    const tally = {};
+    for (const s of seasons) tally[history[s].rows[0].team] = (tally[history[s].rows[0].team] ?? 0) + 1;
+    fs.writeFileSync(path.join(OUT, file), page({
+      title: "Premier League Winners List — Every Champion Since 1992/93",
+      desc: `Complete list of Premier League winners: every champion season by season since 1992/93, plus total titles per club.`,
+      canonical, h1: "Premier League Winners — Every Champion",
+      lede: `Every Premier League title winner from ${seasons[0]} to ${seasons[seasons.length - 1]}, with points totals and each club's overall tally.`,
+      body: `<table><thead><tr><th class="l">Season</th><th class="l">Champions</th><th>Pts</th></tr></thead>
+<tbody>${[...seasons].reverse().map((s) => {
+        const c = history[s].rows[0];
+        return `<tr><td class="l"><a href="premier-league-table-${slug(s)}.html">${esc(s)}</a></td><td class="l"><b>${esc(c.team)}</b></td><td>${c.w * 3 + c.d}</td></tr>`;
+      }).join("\n")}</tbody></table>
+<h2>Titles by club</h2>
+<ul style="line-height:2">${Object.entries(tally).sort((a, b) => b[1] - a[1]).map(([t, n]) =>
+        `<li><b>${esc(t)}</b> — ${n} title${n > 1 ? "s" : ""}</li>`).join("\n")}</ul>
+<div class="nav"><a href="all-time-premier-league-table.html">All-time table</a><a href="index.html">Season tables</a></div>`,
+      jsonld: { "@context": "https://schema.org", "@type": "Dataset",
+        name: "Premier League winners by season", url: canonical,
+        description: "Every Premier League champion since 1992/93.",
+        keywords: ["premier league winners list", "premier league champions by year", "who won the premier league"] },
+    }));
+    urls.push(canonical);
   }
 
   /* all-time records page */
@@ -414,6 +463,78 @@ ${rec.length ? `<h2>All-time records held</h2><ul style="line-height:1.9">${rec.
     }));
     urls.push(canonical);
   }
+
+  /* relegated teams by season */
+  {
+    const file = "premier-league-relegated-teams.html";
+    const canonical = `${BASE}/pages/${file}`;
+    fs.writeFileSync(path.join(OUT, file), page({
+      title: "Relegated Premier League Teams by Season — Full History",
+      desc: "Every club relegated from the Premier League, season by season since 1992/93.",
+      canonical, h1: "Relegated Teams — Every Premier League Season",
+      lede: "Every relegation from the Premier League since 1992/93. Four clubs went down in 1994/95 as the league cut from 22 to 20 teams; otherwise three.",
+      body: `<table><thead><tr><th class="l">Season</th><th class="l">Relegated</th></tr></thead>
+<tbody>${[...seasons].reverse().map((s) => {
+        const { rows, rel = 3 } = history[s];
+        return `<tr><td class="l"><a href="premier-league-table-${slug(s)}.html">${esc(s)}</a></td><td class="l">${rows.slice(rows.length - rel).map((r) => `${esc(r.team)} (${r.w * 3 + r.d} pts)`).join(" · ")}</td></tr>`;
+      }).join("\n")}</tbody></table>
+<div class="nav"><a href="premier-league-winners.html">Winners by season</a><a href="index.html">Season tables</a></div>`,
+      jsonld: { "@context": "https://schema.org", "@type": "Dataset",
+        name: "Premier League relegated teams by season", url: canonical,
+        description: "Every club relegated from the Premier League since 1992/93.",
+        keywords: ["premier league relegated teams", "who got relegated from the premier league"] },
+    }));
+    urls.push(canonical);
+  }
+
+  /* golden glove winners */
+  if (legends?.goldenGlove) {
+    const ggSeasons = Object.keys(legends.goldenGlove).sort();
+    const file = "premier-league-golden-glove-winners.html";
+    const canonical = `${BASE}/pages/${file}`;
+    fs.writeFileSync(path.join(OUT, file), page({
+      title: "Premier League Golden Glove Winners — Every Season",
+      desc: `Every Premier League Golden Glove winner since the award began in ${ggSeasons[0]} — the goalkeeper with the most clean sheets each season.`,
+      canonical, h1: "Premier League Golden Glove Winners",
+      lede: `The Golden Glove goes to the goalkeeper with the most clean sheets each season. Every winner since the award began in ${ggSeasons[0]}.`,
+      body: `<table><thead><tr><th class="l">Season</th><th class="l">Goalkeeper</th><th>Clean sheets</th></tr></thead>
+<tbody>${[...ggSeasons].reverse().map((s) => {
+        const g = legends.goldenGlove[s];
+        const link = history[s] ? `<a href="premier-league-table-${slug(s)}.html">${esc(s)}</a>` : esc(s);
+        return `<tr><td class="l">${link}</td><td class="l"><b>${esc(g.name)}</b></td><td>${g.cs}</td></tr>`;
+      }).join("\n")}</tbody></table>
+<div class="nav"><a href="premier-league-golden-boot-winners.html">Golden Boot winners</a><a href="premier-league-records.html">All-time records</a></div>`,
+      jsonld: { "@context": "https://schema.org", "@type": "Dataset",
+        name: "Premier League Golden Glove winners", url: canonical,
+        description: "Every Golden Glove winner since 2004/05.",
+        keywords: ["premier league golden glove winners", "premier league most clean sheets by season"] },
+    }));
+    urls.push(canonical);
+  }
+
+  /* transfer-window archive pages */
+  try {
+    const arch = JSON.parse(fs.readFileSync(path.join(__dirname, "data", "transfer-archive.json"), "utf8"));
+    for (const [win, w] of Object.entries(arch)) {
+      const moves = Object.values(w.moves).sort((a, b) => (a.date < b.date ? 1 : -1));
+      if (!moves.length) continue;
+      const file = `premier-league-transfers-${win}.html`;
+      const canonical = `${BASE}/pages/${file}`;
+      const lede = `Confirmed Premier League transfers in the ${w.label} window — ${moves.length} completed move${moves.length > 1 ? "s" : ""}, as officially registered.`;
+      fs.writeFileSync(path.join(OUT, file), page({
+        title: `Premier League Transfers ${w.label} — All Confirmed Done Deals`,
+        desc: lede, canonical,
+        h1: `Premier League Transfers — ${w.label}`, lede,
+        body: `<table><thead><tr><th class="l">Date</th><th class="l">Player</th><th class="l">Move</th></tr></thead>
+<tbody>${moves.map((t) => `<tr><td class="l">${esc(t.date)}</td><td class="l"><b>${esc(t.player)}</b></td><td class="l">${esc(t.from)} → ${esc(t.to)}${t.note ? ` <span style="color:#5b6577">(${esc(t.note)})</span>` : ""}</td></tr>`).join("\n")}</tbody></table>
+<div class="nav"><a href="index.html">Season tables</a></div>`,
+        jsonld: { "@context": "https://schema.org", "@type": "Dataset",
+          name: `Premier League confirmed transfers ${w.label}`, description: lede, url: canonical,
+          keywords: [`premier league transfers ${w.label.toLowerCase()}`, `premier league done deals ${w.label.toLowerCase()}`] },
+      }));
+      urls.push(canonical);
+    }
+  } catch { /* no archive yet — appears after fetch_data runs */ }
 
   /* current-season stat pages from live.json */
   if (live?.players && live?.meta?.season) {
