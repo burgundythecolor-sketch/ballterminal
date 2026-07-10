@@ -343,6 +343,97 @@ ${row("All-time PL record", `${c.w + c.d + c.l} played · ${c.w}W ${c.d}D ${c.l}
         keywords: ["all time premier league table", "premier league all time standings"] },
     }));
     urls.push(atCanonical);
+
+    /* head-to-head pages for every pairing that has actually met */
+    const H2H = new Map();
+    for (const [label, ms] of Object.entries(seasonMatches)) {
+      for (const m of ms) {
+        const [x, y] = [m.h, m.a].sort();
+        const key = `${x}|${y}`;
+        const e = H2H.get(key) ?? { x, y, xw: 0, yw: 0, d: 0, xg: 0, yg: 0, meetings: [] };
+        const hIsX = m.h === x;
+        const xs = hIsX ? m.hs : m.as, ys = hIsX ? m.as : m.hs;
+        e.xg += xs; e.yg += ys;
+        if (xs > ys) e.xw++; else if (ys > xs) e.yw++; else e.d++;
+        e.meetings.push({ d: m.d, season: label, h: m.h, a: m.a, hs: m.hs, as: m.as });
+        H2H.set(key, e);
+      }
+    }
+    const h2hFile = (a, b) => {
+      const [x, y] = [a, b].sort();
+      return `${clubSlug(x)}-vs-${clubSlug(y)}-head-to-head.html`;
+    };
+    for (const e of H2H.values()) {
+      const total = e.xw + e.yw + e.d;
+      const file = h2hFile(e.x, e.y);
+      const canonical = `${BASE}/pages/${file}`;
+      const lede = `${e.x} vs ${e.y} in the Premier League: ${total} meeting${total > 1 ? "s" : ""} since 1992/93 — ${e.x} ${e.xw} wins, ${e.d} draws, ${e.y} ${e.yw} wins. Aggregate goals ${e.xg}–${e.yg}.`;
+      const recent = [...e.meetings].sort((a, b) => ((a.d ?? "") < (b.d ?? "") ? 1 : -1)).slice(0, 12);
+      fs.writeFileSync(path.join(OUT, file), page({
+        title: `${e.x} vs ${e.y} — Premier League Head-to-Head Record`,
+        desc: lede, canonical,
+        h1: `${e.x} vs ${e.y} — Head-to-Head`, lede,
+        body: `<table><tbody>
+<tr><td class="l">Premier League meetings</td><td class="l"><b>${total}</b></td></tr>
+<tr><td class="l">${esc(e.x)} wins</td><td class="l"><b>${e.xw}</b></td></tr>
+<tr><td class="l">Draws</td><td class="l"><b>${e.d}</b></td></tr>
+<tr><td class="l">${esc(e.y)} wins</td><td class="l"><b>${e.yw}</b></td></tr>
+<tr><td class="l">Aggregate goals</td><td class="l"><b>${e.xg}–${e.yg}</b></td></tr>
+</tbody></table>
+<h2>Recent meetings</h2>
+<table><thead><tr><th class="l">Date</th><th class="l">Season</th><th class="l">Fixture</th><th>Score</th></tr></thead>
+<tbody>${recent.map((m) => `<tr><td class="l">${esc(m.d ?? "")}</td><td class="l">${esc(m.season)}</td><td class="l">${esc(m.h)} v ${esc(m.a)}</td><td>${m.hs}–${m.as}</td></tr>`).join("\n")}</tbody></table>
+<div class="nav"><a href="${clubSlug(e.x)}-club-records.html">${esc(e.x)} records</a><a href="${clubSlug(e.y)}-club-records.html">${esc(e.y)} records</a><a href="premier-league-head-to-heads.html">All head-to-heads</a></div>`,
+        jsonld: { "@context": "https://schema.org", "@type": "Dataset",
+          name: `${e.x} vs ${e.y} Premier League head-to-head`, description: lede, url: canonical,
+          keywords: [`${e.x.toLowerCase()} vs ${e.y.toLowerCase()} head to head`, `${e.x.toLowerCase()} v ${e.y.toLowerCase()} premier league record`] },
+      }));
+      urls.push(canonical);
+    }
+    /* h2h index grouped by club */
+    {
+      const file = "premier-league-head-to-heads.html";
+      const canonical = `${BASE}/pages/${file}`;
+      const byClub = new Map();
+      for (const e of H2H.values()) {
+        (byClub.get(e.x) ?? byClub.set(e.x, []).get(e.x)).push(e.y);
+        (byClub.get(e.y) ?? byClub.set(e.y, []).get(e.y)).push(e.x);
+      }
+      fs.writeFileSync(path.join(OUT, file), page({
+        title: "Premier League Head-to-Head Records — Every Fixture Since 1992/93",
+        desc: `All-time head-to-head records for every Premier League pairing — ${H2H.size} fixtures.`,
+        canonical, h1: "Premier League Head-to-Head Records",
+        lede: `All-time records for every pairing of clubs to have met in the Premier League — ${H2H.size} fixtures. Pick a club, then an opponent.`,
+        body: [...byClub.keys()].sort().map((c) =>
+          `<h2>${esc(c)}</h2><p style="line-height:2">${[...new Set(byClub.get(c))].sort().map((o) =>
+            `<a href="${h2hFile(c, o)}">${esc(o)}</a>`).join(" · ")}</p>`).join("\n") +
+          `<div class="nav"><a href="premier-league-clubs.html">Club records</a><a href="index.html">Season tables</a></div>`,
+      }));
+      urls.push(canonical);
+      console.log(`      ${H2H.size} head-to-head pages`);
+    }
+  }
+
+  /* current-season table page — live standings refreshed by the daily
+     Action; skipped once the season is finished and in the history
+     (the final version then owns the same URL) */
+  if (live?.table?.length && live?.meta?.season && !history[live.meta.season]) {
+    const s = live.meta.season;
+    const file = `premier-league-table-${slug(s)}.html`;
+    const canonical = `${BASE}/pages/${file}`;
+    const lede = `The Premier League table for the ${s} season, updated daily — standings after matchweek ${live.meta.currentMW}. ${live.table[0].team} lead the league.`;
+    fs.writeFileSync(path.join(OUT, file), page({
+      title: `Premier League Table ${s} — Standings, Updated Daily`,
+      desc: lede, canonical,
+      h1: `Premier League Table ${s}`, lede,
+      body: tableHtml(live.table, 3) +
+        `<div class="nav"><a href="premier-league-winners.html">Winners by season</a><a href="index.html">All seasons</a></div>`,
+      jsonld: { "@context": "https://schema.org", "@type": "Dataset",
+        name: `Premier League table ${s}`, description: lede, url: canonical,
+        keywords: [`premier league table ${s}`, "premier league standings", "premier league table today"] },
+    }));
+    urls.push(canonical);
+    console.log(`      current-season table page (${s}, MW ${live.meta.currentMW})`);
   }
 
   /* winners list — champions by season + titles tally */
