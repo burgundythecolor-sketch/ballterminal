@@ -962,8 +962,12 @@ const FPL = {
     "Ajax","PSV","Marseille","Lyon","Monaco","Al-Hilal","Al-Nassr","Al-Ittihad","Al-Ahli","Galatasaray","Fenerbahce","Celtic","Rangers"],
   /* women's game has its own transfer market — keep the wire EPL-only */
   WOMENS_RE: /\b(wsl2?|women'?s?|ladies|lionesses)\b/i,
+  /* retrospective anecdotes ("Klopp reveals how…", "nearly signed…")
+     are stories about the past, not market news */
+  RETRO_RE: /\breveal(?:s|ed)?\b|\bexplains?\b|\bremembers?\b|\brecalls?\b|\blooks? back\b|\bnearly\b|\balmost\b|\btried to\b|\bcould have\b|\byears ago\b|\bon this day\b|\bthrowback\b/i,
   classifyHeadline(title, teamNames) {
     if (this.WOMENS_RE.test(title)) return null;
+    if (this.RETRO_RE.test(title)) return null;
     const explicit = /transfer|gossip|deadline day|here we go/i.test(title);
     if (!this.TRANSFER_RE.test(title) && !explicit) return null;
     const clubs = [];
@@ -977,7 +981,11 @@ const FPL = {
     const from = possessive ?? (title.match(/\bfrom ([A-Z][\w' .-]+?)(?=[,.]|$| in| for| after)/) || [])[1]
       ?? clubs.find(c => c !== to) ?? "—";
     const fee = (title.match(/[£€]\s?[\d.]+\s?(?:m|million|bn)/i) || [])[0]?.replace(/\s/g, "") ?? "—";
-    const status = this.DONE_RE.test(title) ? "done" : this.ADV_RE.test(title) ? "adv" : "rumour";
+    /* "to sign / wants to sign / trying to sign" are intentions, not
+       completions — only unmodified verbs count as done deals */
+    const intent = /\b(?:to|will|could|want(?:s)? to|hop(?:es|ing) to|set to|aiming to|trying to|expected to|keen to)\s+(?:sign|join|complete|seal)/i.test(title);
+    const status = this.DONE_RE.test(title) && !intent ? "done"
+      : this.ADV_RE.test(title) ? "adv" : "rumour";
     return { to, from, fee, status };
   },
   async newsRumours() {
