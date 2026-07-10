@@ -62,7 +62,8 @@
     max-width: 1180px; margin: 0 auto; padding: 0 24px;
     display: flex; align-items: center; gap: 28px; height: 60px;
   }
-  .brand { font-family: var(--mono); font-size: 15px; font-weight: 600; letter-spacing: .02em; white-space: nowrap; }
+  .brand { font-family: var(--mono); font-size: 15px; font-weight: 600; letter-spacing: .02em; white-space: nowrap; display: flex; align-items: center; gap: 8px; }
+  .brand-icon { width: 18px; height: 18px; border-radius: 4px; display: block; }
   .brand .sym { color: var(--green); }
   .brand .dim { color: var(--text-dim); font-weight: 400; }
 
@@ -312,7 +313,7 @@
 
 <header>
   <div class="header-inner">
-    <div class="brand"><span class="sym">⚽</span> ballterminal <span class="dim">/ epl</span></div>
+    <div class="brand"><img src="icons/favicon-64.png?v=2" alt="" class="brand-icon"> ballterminal <span class="dim">/ epl</span></div>
     <nav id="nav">
       <button class="tab active" data-tab="results"><span class="key">[1]</span>RESULTS</button>
       <button class="tab" data-tab="table"><span class="key">[2]</span>TABLE/TEAMS</button>
