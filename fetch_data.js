@@ -163,11 +163,24 @@ function aggregateOfficialPlayers(pulses, extras = null) {
     return p;
   };
 
+  /* per-club tallies (for the per-season club scorer pages) */
+  const perClub = new Map();
+  const bumpClub = (club, key, field, inc = 1) => {
+    if (!club) return;
+    const c = perClub.get(club) ?? new Map();
+    const p = c.get(key) ?? { g: 0, a: 0 };
+    p[field] += inc;
+    c.set(key, p);
+    perClub.set(club, c);
+  };
+
   const byKickoff = [...pulses].sort((a, b) => (a.kickoff?.millis ?? 0) - (b.kickoff?.millis ?? 0));
   for (const pulse of byKickoff) {
-    const clubOfTeam = {}, names = {}, teamOf = {}, keyOf = {}, gkOf = {};
-    for (const t of pulse.teams ?? [])
+    const clubOfTeam = {}, nameOfTeam = {}, names = {}, teamOf = {}, keyOf = {}, gkOf = {};
+    for (const t of pulse.teams ?? []) {
       clubOfTeam[t.team?.id] = t.team?.club?.abbr ?? t.team?.shortName ?? "";
+      nameOfTeam[t.team?.id] = t.team?.name ?? t.team?.shortName ?? "";
+    }
     for (const tl of pulse.teamLists ?? []) {
       for (const p of [...(tl.lineup ?? []), ...(tl.substitutes ?? [])]) {
         names[p.id] = p.name?.display ?? "?";
@@ -181,10 +194,14 @@ function aggregateOfficialPlayers(pulses, extras = null) {
     for (const e of pulse.events ?? []) {
       if (e.type !== "G") continue;
       const desc = (e.description ?? "").toUpperCase();
-      if (e.personId != null && desc !== "O" && desc !== "OG")
+      if (e.personId != null && desc !== "O" && desc !== "OG") {
         ensure(key(e.personId), names[e.personId], clubOfTeam[teamOf[e.personId]]).goals++;
-      if (e.assistId != null)
+        bumpClub(nameOfTeam[teamOf[e.personId]], key(e.personId), "g");
+      }
+      if (e.assistId != null) {
         ensure(key(e.assistId), names[e.assistId], clubOfTeam[teamOf[e.assistId]]).assists++;
+        bumpClub(nameOfTeam[teamOf[e.assistId]], key(e.assistId), "a");
+      }
     }
     const [h, a] = pulse.teams ?? [];
     if (h?.team && a?.team) {
@@ -204,11 +221,12 @@ function aggregateOfficialPlayers(pulses, extras = null) {
       const stat = (id) => f.stats?.find((s) => s.identifier === id) ?? { h: [], a: [] };
       for (const side of ["h", "a"]) {
         const teamId = side === "h" ? f.team_h : f.team_a;
-        for (const [ident, field] of [["goals_scored", "goals"], ["assists", "assists"]]) {
+        for (const [ident, field, short] of [["goals_scored", "goals", "g"], ["assists", "assists", "a"]]) {
           for (const g of stat(ident)[side]) {
             const e = byId[g.element];
             if (!e) continue;
             ensure("p" + e.code, `${e.first_name} ${e.second_name}`.trim(), clubShort[teamId])[field] += g.value;
+            bumpClub(extras.teams.find((t) => t.id === teamId)?.name, "p" + e.code, short, g.value);
           }
         }
       }
@@ -220,7 +238,17 @@ function aggregateOfficialPlayers(pulses, extras = null) {
     .sort((x, y) => y[field] - x[field] || x.name.localeCompare(y.name))
     .slice(0, 10)
     .map((p) => ({ name: p.name, club: p.club, val: p[field] }));
-  return { goals: top("goals"), assists: top("assists"), cleansheets: top("cs") };
+  /* per-club boards, resolved to display names */
+  const perClubOut = {};
+  for (const [club, players] of perClub) {
+    const list = (field) => [...players.entries()]
+      .filter(([, v]) => v[field] > 0)
+      .sort((a, b) => b[1][field] - a[1][field])
+      .slice(0, 10)
+      .map(([k, v]) => ({ name: P.get(k)?.name ?? "?", val: v[field] }));
+    perClubOut[club] = { goals: list("g"), assists: list("a") };
+  }
+  return { goals: top("goals"), assists: top("assists"), cleansheets: top("cs"), perClub: perClubOut };
 }
 
 /* bootstrap elements -> player leaderboards (site shape) */
@@ -406,11 +434,22 @@ async function main() {
       const agg = aggregateOfficialPlayers(pulses,
         { fixtures: statExtras, elements: boot.elements, teams: boot.teams });
       if (!agg) return computePlayers(boot);
+      /* archive this season's per-club tallies for the club scorer pages */
+      const { perClub, ...boards } = agg;
+      if (perClub && Object.keys(perClub).length) {
+        try {
+          const SFILE = path.join(OUT, "scorer-archive.json");
+          let sa = {};
+          try { sa = JSON.parse(fs.readFileSync(SFILE, "utf8")); } catch {}
+          sa[`${y0}/${String(y0 + 1).slice(2)}`] = perClub;
+          fs.writeFileSync(SFILE, JSON.stringify(sa));
+        } catch (err) { console.warn("      ! scorer archive:", err.message); }
+      }
       /* clean sheets: FPL bootstrap totals cover all matches (incl. any
          event-data gaps) and match official GK counts — prefer them */
       const fplCS = computePlayers(boot).cleansheets;
-      if (fplCS[0]?.val > 0) agg.cleansheets = fplCS;
-      return agg;
+      if (fplCS[0]?.val > 0) boards.cleansheets = fplCS;
+      return boards;
     })(),
     transfers: computeTransfers(boot),
   };

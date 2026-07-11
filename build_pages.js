@@ -53,6 +53,10 @@ function loadRecords() {
     return m ? new Function("return " + m[1])() : null;
   } catch { return null; }
 }
+function loadScorerArchive() {
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, "data", "scorer-archive.json"), "utf8")); }
+  catch { return {}; }
+}
 function loadLegends() {
   try {
     const src = fs.readFileSync(path.join(__dirname, "data", "legends.js"), "utf8");
@@ -113,6 +117,7 @@ function main() {
   const seasonMatches = loadMatches();
   const records = loadRecords();
   const legends = loadLegends();
+  const scorerArchive = loadScorerArchive();
   const seasons = Object.keys(history).sort();
   const urls = [];
 
@@ -554,6 +559,36 @@ ${rec.length ? `<h2>All-time records held</h2><ul style="line-height:1.9">${rec.
     }));
     urls.push(canonical);
   }
+
+  /* per-club top scorers & assists, per season (from event data —
+     starts 2025/26 and accumulates each season the fetcher runs) */
+  let scorerPages = 0;
+  for (const [season, clubsMap] of Object.entries(scorerArchive)) {
+    for (const [club, boards] of Object.entries(clubsMap)) {
+      if (!boards.goals?.length && !boards.assists?.length) continue;
+      const file = `${clubSlug(club)}-top-scorers-${slug(season)}.html`;
+      const canonical = `${BASE}/pages/${file}`;
+      const topG = boards.goals?.[0];
+      const lede = `${club}'s top goalscorers and assist providers in the ${season} Premier League season` +
+        (topG ? ` — ${topG.name} leads with ${topG.val} goals.` : ".");
+      const board = (title, list, col) => list?.length
+        ? `<h2>${title}</h2><table><thead><tr><th class="l">#</th><th class="l">Player</th><th>${col}</th></tr></thead>
+<tbody>${list.map((p, i) => `<tr><td class="l">${i + 1}</td><td class="l">${esc(p.name)}</td><td><b>${p.val}</b></td></tr>`).join("\n")}</tbody></table>` : "";
+      fs.writeFileSync(path.join(OUT, file), page({
+        title: `${club} Top Scorers ${season} — Goals & Assists`,
+        desc: lede, canonical,
+        h1: `${club} — Top Scorers & Assists, ${season}`, lede,
+        body: board("Goals", boards.goals, "Goals") + board("Assists", boards.assists, "Assists") +
+          `<div class="nav">${history[season] ? `<a href="${clubSlug(club)}-${slug(season)}.html">${esc(club)} ${esc(season)} results</a>` : ""}<a href="${clubSlug(club)}-club-records.html">${esc(club)} club records</a></div>`,
+        jsonld: { "@context": "https://schema.org", "@type": "Dataset",
+          name: `${club} top scorers ${season}`, description: lede, url: canonical,
+          keywords: [`${club.toLowerCase()} top scorers ${season}`, `${club.toLowerCase()} goalscorers`, `${club.toLowerCase()} assists ${season}`] },
+      }));
+      urls.push(canonical);
+      scorerPages++;
+    }
+  }
+  if (scorerPages) console.log(`      ${scorerPages} club scorer pages`);
 
   /* relegated teams by season */
   {
