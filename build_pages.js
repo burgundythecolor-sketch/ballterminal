@@ -90,6 +90,7 @@ function page({ title, desc, canonical, h1, lede, body, jsonld }) {
 <meta name="description" content="${esc(desc)}">
 <link rel="canonical" href="${canonical}">
 <style>${CSS}</style>
+<script data-goatcounter="https://ballterminal.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 ${jsonld ? `<script type="application/ld+json">${JSON.stringify(jsonld)}</script>` : ""}
 </head>
 <body><main>
