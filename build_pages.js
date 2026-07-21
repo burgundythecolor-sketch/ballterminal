@@ -249,6 +249,21 @@ ${i < seasons.length - 1 ? `<a href="premier-league-table-${slug(seasons[i + 1])
   if (clubPages) console.log(`      ${clubPages} club season pages`);
   else console.log("      no season-matches.json yet — run fetch_history.js to enable club pages");
 
+  /* match source for club records + head-to-heads: historical archives
+     (completed seasons) plus the current season's finished matches from
+     live.json, so both stay current during the season */
+  const h2hSource = { ...seasonMatches };
+  let liveSeasonAdded = null;
+  if (live?.results && live?.meta?.season && !seasonMatches[live.meta.season]) {
+    const played = Object.values(live.results).flat()
+      .filter((m) => m.status === "FT" && m.hs != null && m.as != null)
+      .map((m) => ({ d: m.date, h: m.home, a: m.away, hs: m.hs, as: m.as }));
+    if (played.length) {
+      h2hSource[live.meta.season] = played;
+      liveSeasonAdded = live.meta.season;
+    }
+  }
+
   /* per-club all-time record pages */
   if (Object.keys(seasonMatches).length) {
     const ord = (n) => n + (["st", "nd", "rd"][((n + 90) % 100 - 10) % 10 - 1] ?? "th");
@@ -269,7 +284,7 @@ ${i < seasons.length - 1 ? `<a href="premier-league-table-${slug(seasons[i + 1])
         clubs.set(r.team, c);
       }
     }
-    for (const [label, ms] of Object.entries(seasonMatches)) {
+    for (const [label, ms] of Object.entries(h2hSource)) {
       const run = new Map(); // team -> current streaks within this season
       for (const m of [...ms].sort((a, b) => ((a.d ?? "") < (b.d ?? "") ? -1 : 1))) {
         for (const side of ["h", "a"]) {
@@ -365,7 +380,7 @@ ${row("All-time PL record", `${c.w + c.d + c.l} played · ${c.w}W ${c.d}D ${c.l}
 
     /* head-to-head pages for every pairing that has actually met */
     const H2H = new Map();
-    for (const [label, ms] of Object.entries(seasonMatches)) {
+    for (const [label, ms] of Object.entries(h2hSource)) {
       for (const m of ms) {
         const [x, y] = [m.h, m.a].sort();
         const key = `${x}|${y}`;
@@ -386,7 +401,8 @@ ${row("All-time PL record", `${c.w + c.d + c.l} played · ${c.w}W ${c.d}D ${c.l}
       const total = e.xw + e.yw + e.d;
       const file = h2hFile(e.x, e.y);
       const canonical = `${BASE}/pages/${file}`;
-      const lede = `${e.x} vs ${e.y} in the Premier League: ${total} meeting${total > 1 ? "s" : ""} since 1992/93 — ${e.x} ${e.xw} wins, ${e.d} draws, ${e.y} ${e.yw} wins. Aggregate goals ${e.xg}–${e.yg}.`;
+      const upto = liveSeasonAdded ? ` (including ${liveSeasonAdded} to date)` : "";
+      const lede = `${e.x} vs ${e.y} in the Premier League: ${total} meeting${total > 1 ? "s" : ""} since 1992/93${upto} — ${e.x} ${e.xw} wins, ${e.d} draws, ${e.y} ${e.yw} wins. Aggregate goals ${e.xg}–${e.yg}.`;
       const recent = [...e.meetings].sort((a, b) => ((a.d ?? "") < (b.d ?? "") ? 1 : -1)).slice(0, 12);
       fs.writeFileSync(path.join(OUT, file), page({
         title: `${e.x} vs ${e.y} — Premier League Head-to-Head Record`,
