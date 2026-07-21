@@ -80,7 +80,20 @@ tr.champ td{color:#2dffa3}tr.rel td{color:#ff5370}
 color:#2dffa3;text-decoration:none;font-family:ui-monospace,monospace}
 footer{margin-top:34px;font-size:12px;color:#5b6577}`;
 
+/* Dataset items get a license + publisher so Google can present them
+   fully (Search Console flags these as optional-but-recommended) */
+function enrichJsonld(j, canonical) {
+  if (!j || j["@type"] !== "Dataset") return j;
+  return {
+    ...j,
+    license: "https://creativecommons.org/licenses/by/4.0/",
+    creator: { "@type": "Organization", name: "ballterminal", url: "https://ballterminal.com/" },
+    isAccessibleForFree: true,
+  };
+}
+
 function page({ title, desc, canonical, h1, lede, body, jsonld }) {
+  jsonld = enrichJsonld(jsonld, canonical);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
