@@ -111,7 +111,8 @@ ${jsonld ? `<script type="application/ld+json">${JSON.stringify(jsonld)}</script
 <p class="lede">${esc(lede)}</p>
 <a class="cta" href="../index.html">❯ open the live ballterminal — table · results · stats · transfers</a>
 ${body}
-<footer>ballterminal — Premier League results, tables and stats, 1992/93 to today.</footer>
+<footer>ballterminal — Premier League results, tables and stats, 1992/93 to today.<br>
+Spotted an error or want to get in touch? <a href="mailto:ballterminal@outlook.com">ballterminal@outlook.com</a></footer>
 </main></body></html>`;
 }
 
