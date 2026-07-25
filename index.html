@@ -1868,12 +1868,32 @@ setInterval(() => {
 /* boot */
 (async () => {
   if (CONFIG.FPL.ENABLED) {
-    try { // jump to the current gameweek
+    try {
       const b = await FPL.bootstrap();
       CONFIG.MAX_MATCHWEEK = b.events?.length ?? CONFIG.MAX_MATCHWEEK;
-      const cur = b.events?.find(e => e.is_current)
-        ?? [...(b.events ?? [])].reverse().find(e => e.finished);
+      /* pick the matchweek to open on:
+         in season  -> the current one
+         between MWs -> the next one that hasn't finished
+         preseason  -> MW 1 (never the last week of the season) */
+      const evs = b.events ?? [];
+      const cur = evs.find(e => e.is_current)
+        ?? evs.find(e => e.is_next)
+        ?? evs.find(e => !e.finished)
+        ?? evs[0];
       if (cur) currentMW = cur.id;
+      /* label the season from the live fixture list, not the snapshot */
+      try {
+        const fx = await FPL.allFixtures();
+        const years = fx.map(f => f.kickoff_time).filter(Boolean).map(k => +k.slice(0, 4));
+        if (years.length) {
+          const y0 = Math.min(...years);
+          const season = `${y0}/${String(y0 + 1).slice(2)}`;
+          $("#results-sub").textContent = "season " + season;
+          document.querySelector("#sec-players .sec-sub").textContent = season + " · league only";
+          const ts = document.querySelector("#sec-table .sec-sub");
+          if (ts) ts.textContent = "season " + season;
+        }
+      } catch { /* keep existing label */ }
     } catch (err) { console.warn("[FPL] boot:", err.message); }
   } else if (LIVE?.meta) {
     CONFIG.MAX_MATCHWEEK = LIVE.meta.maxMW ?? CONFIG.MAX_MATCHWEEK;
