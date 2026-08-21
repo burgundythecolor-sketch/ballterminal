@@ -99,8 +99,17 @@ function enrichJsonld(j, canonical) {
   };
 }
 
-function page({ title, desc, canonical, h1, lede, body, jsonld }) {
-  jsonld = enrichJsonld(jsonld, canonical);
+/* Thin pages are kept for visitors but removed from the index:
+   "noindex,follow" drops them from search while still passing link
+   value to the substantial pages they point at. They are also left out
+   of the sitemap — never ask Google to crawl what you noindex. */
+const THIN = {
+  h2hMinMeetings: 6,   // pairings that met fewer times than this
+  clubMinSeasons: 3,   // clubs with fewer PL seasons than this
+};
+
+function page({ title, desc, canonical, h1, lede, body, jsonld, noindex }) {
+  jsonld = noindex ? null : enrichJsonld(jsonld, canonical);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -108,7 +117,7 @@ function page({ title, desc, canonical, h1, lede, body, jsonld }) {
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>${esc(title)}</title>
 <meta name="description" content="${esc(desc)}">
-<link rel="canonical" href="${canonical}">
+<link rel="canonical" href="${canonical}">${noindex ? '\n<meta name="robots" content="noindex,follow">' : ""}
 <style>${CSS}</style>
 <script data-goatcounter="https://ballterminal.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
 ${jsonld ? `<script type="application/ld+json">${JSON.stringify(jsonld)}</script>` : ""}
@@ -318,16 +327,19 @@ ${i < seasons.length - 1 ? `<a href="premier-league-table-${slug(seasons[i + 1])
       }
     }
     const row = (k, v) => `<tr><td class="l">${k}</td><td class="l"><b>${v}</b></td></tr>`;
+    let clubIndexed = 0, clubThin = 0;
     for (const c of [...clubs.values()].sort((a, b) => a.team.localeCompare(b.team))) {
       const file = `${clubSlug(c.team)}-club-records.html`;
       const canonical = `${BASE}/pages/${file}`;
+      const thinClub = c.seasons.length < THIN.clubMinSeasons;
+      thinClub ? clubThin++ : clubIndexed++;
       const span = `${c.seasons[0]}–${c.seasons[c.seasons.length - 1].slice(-5)}`;
       const lede = `${c.team}'s Premier League records: ${c.seasons.length} season${c.seasons.length > 1 ? "s" : ""} (${span})` +
         (c.titles ? `, ${c.titles} title${c.titles > 1 ? "s" : ""}` : "") +
         `, best finish ${ord(c.bestPos)} (${c.bestPosSeason}), record points ${c.maxPts} (${c.maxPtsSeason}).`;
       fs.writeFileSync(path.join(OUT, file), page({
         title: `${c.team} — ${c.seasons.length} Premier League Seasons, ${c.titles ? `${c.titles} Title${c.titles > 1 ? "s" : ""}, ` : ""}Best Finish ${ord(c.bestPos)} (Club Records)`,
-        desc: lede, canonical,
+        desc: lede, canonical, noindex: thinClub,
         h1: `${c.team} — Premier League Club Records`, lede,
         body: `<table><tbody>
 ${row("Premier League seasons", `${c.seasons.length} (${esc(span)})`)}
@@ -350,8 +362,9 @@ ${row("All-time PL record", `${c.w + c.d + c.l} played · ${c.w}W ${c.d}D ${c.l}
           name: `${c.team} Premier League club records`, description: lede, url: canonical,
           keywords: [`${c.team.toLowerCase()} premier league record`, `${c.team.toLowerCase()} biggest win`, `${c.team.toLowerCase()} best season`] },
       }));
-      urls.push(canonical);
+      if (!thinClub) urls.push(canonical);
     }
+    console.log(`      ${clubIndexed} club record pages indexed, ${clubThin} thin (noindex, <${THIN.clubMinSeasons} seasons)`);
     /* clubs index */
     const file = "premier-league-clubs.html";
     const canonical = `${BASE}/pages/${file}`;
@@ -407,10 +420,44 @@ ${row("All-time PL record", `${c.w + c.d + c.l} played · ${c.w}W ${c.d}D ${c.l}
       const [x, y] = [a, b].sort();
       return `${clubSlug(x)}-vs-${clubSlug(y)}-head-to-head.html`;
     };
+    let h2hIndexed = 0, h2hThin = 0;
     for (const e of H2H.values()) {
       const total = e.xw + e.yw + e.d;
       const file = h2hFile(e.x, e.y);
       const canonical = `${BASE}/pages/${file}`;
+      const thin = total < THIN.h2hMinMeetings;
+      thin ? h2hThin++ : h2hIndexed++;
+
+      /* fixture facts — turns a bare results table into a page with
+         something to say (only computed for pages we keep indexed) */
+      const chron = [...e.meetings].sort((a, b) => ((a.d ?? "") < (b.d ?? "") ? -1 : 1));
+      const firstM = chron[0], lastM = chron[chron.length - 1];
+      let bigX = null, bigY = null, highest = null;
+      let curX = 0, curY = 0, runX = 0, runY = 0;
+      let xHomeW = 0, xHomeD = 0, xHomeL = 0, yHomeW = 0, yHomeD = 0, yHomeL = 0;
+      for (const m of chron) {
+        const xHome = m.h === e.x;
+        const xs = xHome ? m.hs : m.as, ys = xHome ? m.as : m.hs;
+        const marg = xs - ys, tot = m.hs + m.as;
+        if (marg > 0 && (!bigX || marg > bigX.marg)) bigX = { ...m, marg };
+        if (marg < 0 && (!bigY || marg < bigY.marg)) bigY = { ...m, marg };
+        if (!highest || tot > highest.tot) highest = { ...m, tot };
+        if (marg > 0) { curX++; curY = 0; } else if (marg < 0) { curY++; curX = 0; } else { curX = 0; curY = 0; }
+        runX = Math.max(runX, curX); runY = Math.max(runY, curY);
+        if (xHome) { marg > 0 ? xHomeW++ : marg < 0 ? xHomeL++ : xHomeD++; }
+        else { marg < 0 ? yHomeW++ : marg > 0 ? yHomeL++ : yHomeD++; }
+      }
+      const score = (m) => `${esc(m.h)} ${m.hs}–${m.as} ${esc(m.a)}`;
+      const facts = [
+        firstM && `<li><b>First meeting:</b> ${score(firstM)} (${esc(firstM.season)})</li>`,
+        lastM && lastM !== firstM && `<li><b>Most recent meeting:</b> ${score(lastM)} (${esc(lastM.season)})</li>`,
+        bigX && `<li><b>${esc(e.x)}'s biggest win:</b> ${score(bigX)} (${esc(bigX.season)})</li>`,
+        bigY && `<li><b>${esc(e.y)}'s biggest win:</b> ${score(bigY)} (${esc(bigY.season)})</li>`,
+        highest && `<li><b>Highest-scoring meeting:</b> ${score(highest)} — ${highest.tot} goals (${esc(highest.season)})</li>`,
+        runX > 1 && `<li><b>${esc(e.x)}'s longest winning run in the fixture:</b> ${runX} matches</li>`,
+        runY > 1 && `<li><b>${esc(e.y)}'s longest winning run in the fixture:</b> ${runY} matches</li>`,
+        `<li><b>At ${esc(e.x)}:</b> ${xHomeW}W ${xHomeD}D ${xHomeL}L · <b>At ${esc(e.y)}:</b> ${yHomeW}W ${yHomeD}D ${yHomeL}L</li>`,
+      ].filter(Boolean).join("\n");
       const upto = liveSeasonAdded ? ` (including ${liveSeasonAdded} to date)` : "";
       const lede = `${e.x} vs ${e.y} in the Premier League: ${total} meeting${total > 1 ? "s" : ""} since 1992/93${upto} — ${e.x} ${e.xw} wins, ${e.d} draws, ${e.y} ${e.yw} wins. Aggregate goals ${e.xg}–${e.yg}.`;
       const recent = [...e.meetings].sort((a, b) => ((a.d ?? "") < (b.d ?? "") ? 1 : -1)).slice(0, 12);
@@ -421,7 +468,7 @@ ${row("All-time PL record", `${c.w + c.d + c.l} played · ${c.w}W ${c.d}D ${c.l}
         : `${e.x} vs ${e.y} H2H — ${total} Meetings, ${e.xw > e.yw ? e.x : e.y} Lead ${Math.max(e.xw, e.yw)}-${e.d}-${Math.min(e.xw, e.yw)}`;
       fs.writeFileSync(path.join(OUT, file), page({
         title: h2hTitle,
-        desc: lede, canonical,
+        desc: lede, canonical, noindex: thin,
         h1: `${e.x} vs ${e.y} — Head-to-Head`, lede,
         body: `<table><tbody>
 <tr><td class="l">Premier League meetings</td><td class="l"><b>${total}</b></td></tr>
@@ -430,7 +477,11 @@ ${row("All-time PL record", `${c.w + c.d + c.l} played · ${c.w}W ${c.d}D ${c.l}
 <tr><td class="l">${esc(e.y)} wins</td><td class="l"><b>${e.yw}</b></td></tr>
 <tr><td class="l">Aggregate goals</td><td class="l"><b>${e.xg}–${e.yg}</b></td></tr>
 </tbody></table>
-<h2>Recent meetings</h2>
+<h2>Fixture facts</h2>
+<ul style="line-height:1.9;font-size:15px">
+${facts}
+</ul>
+<h2>Last ${Math.min(12, total)} meetings</h2>
 <table><thead><tr><th class="l">Date</th><th class="l">Season</th><th class="l">Fixture</th><th>Score</th></tr></thead>
 <tbody>${recent.map((m) => `<tr><td class="l">${esc(m.d ?? "")}</td><td class="l">${esc(m.season)}</td><td class="l">${esc(m.h)} v ${esc(m.a)}</td><td>${m.hs}–${m.as}</td></tr>`).join("\n")}</tbody></table>
 <div class="nav"><a href="${clubSlug(e.x)}-club-records.html">${esc(e.x)} records</a><a href="${clubSlug(e.y)}-club-records.html">${esc(e.y)} records</a><a href="premier-league-head-to-heads.html">All head-to-heads</a></div>`,
@@ -438,8 +489,9 @@ ${row("All-time PL record", `${c.w + c.d + c.l} played · ${c.w}W ${c.d}D ${c.l}
           name: `${e.x} vs ${e.y} Premier League head-to-head`, description: lede, url: canonical,
           keywords: [`${e.x.toLowerCase()} vs ${e.y.toLowerCase()} head to head`, `${e.x.toLowerCase()} v ${e.y.toLowerCase()} premier league record`] },
       }));
-      urls.push(canonical);
+      if (!thin) urls.push(canonical);
     }
+    console.log(`      ${h2hIndexed} head-to-head pages indexed, ${h2hThin} thin (noindex, <${THIN.h2hMinMeetings} meetings)`);
     /* h2h index grouped by club */
     {
       const file = "premier-league-head-to-heads.html";
