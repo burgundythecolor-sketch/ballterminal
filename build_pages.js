@@ -194,7 +194,7 @@ ${i > 0 ? `<a href="premier-league-table-${slug(seasons[i - 1])}.html">◂ ${esc
 ${i < seasons.length - 1 ? `<a href="premier-league-table-${slug(seasons[i + 1])}.html">${esc(seasons[i + 1])} table ▸</a>` : ""}
 </div>`;
     fs.writeFileSync(path.join(OUT, file), page({
-      title: `Premier League Table ${label} — Final Standings & Results`,
+      title: `Premier League Table ${label} — ${champ.team} Champions (${champ.w * 3 + champ.d} pts), Final Standings`,
       desc: `The final ${label} Premier League table. ${champ.team} champions with ${champ.w * 3 + champ.d} points; ${relegated.join(", ")} relegated. Full standings for all ${rows.length} clubs.`,
       canonical,
       h1: `Premier League Table ${label} — Final Standings`,
@@ -326,7 +326,7 @@ ${i < seasons.length - 1 ? `<a href="premier-league-table-${slug(seasons[i + 1])
         (c.titles ? `, ${c.titles} title${c.titles > 1 ? "s" : ""}` : "") +
         `, best finish ${ord(c.bestPos)} (${c.bestPosSeason}), record points ${c.maxPts} (${c.maxPtsSeason}).`;
       fs.writeFileSync(path.join(OUT, file), page({
-        title: `${c.team} — Premier League Club Records & History`,
+        title: `${c.team} — ${c.seasons.length} Premier League Seasons, ${c.titles ? `${c.titles} Title${c.titles > 1 ? "s" : ""}, ` : ""}Best Finish ${ord(c.bestPos)} (Club Records)`,
         desc: lede, canonical,
         h1: `${c.team} — Premier League Club Records`, lede,
         body: `<table><tbody>
@@ -414,8 +414,13 @@ ${row("All-time PL record", `${c.w + c.d + c.l} played · ${c.w}W ${c.d}D ${c.l}
       const upto = liveSeasonAdded ? ` (including ${liveSeasonAdded} to date)` : "";
       const lede = `${e.x} vs ${e.y} in the Premier League: ${total} meeting${total > 1 ? "s" : ""} since 1992/93${upto} — ${e.x} ${e.xw} wins, ${e.d} draws, ${e.y} ${e.yw} wins. Aggregate goals ${e.xg}–${e.yg}.`;
       const recent = [...e.meetings].sort((a, b) => ((a.d ?? "") < (b.d ?? "") ? 1 : -1)).slice(0, 12);
+      /* title carries the answer — searchers click results that already
+         show the number they asked for */
+      const h2hTitle = e.xw === e.yw
+        ? `${e.x} vs ${e.y} — ${total} Meetings, ${e.xw}-${e.d}-${e.yw} (H2H Record)`
+        : `${e.x} vs ${e.y} H2H — ${total} Meetings, ${e.xw > e.yw ? e.x : e.y} Lead ${Math.max(e.xw, e.yw)}-${e.d}-${Math.min(e.xw, e.yw)}`;
       fs.writeFileSync(path.join(OUT, file), page({
-        title: `${e.x} vs ${e.y} — Premier League Head-to-Head Record`,
+        title: h2hTitle,
         desc: lede, canonical,
         h1: `${e.x} vs ${e.y} — Head-to-Head`, lede,
         body: `<table><tbody>
@@ -566,8 +571,11 @@ ${row("All-time PL record", `${c.w + c.d + c.l} played · ${c.w}W ${c.d}D ${c.l}
       if (p.cs) bits.push(`${p.cs} clean sheets`);
       const rec = holds(p.name);
       const lede = `${p.name}'s complete Premier League career (${p.span}): ${bits.join(", ")}. ${p.note}`;
+      const headline = p.goals ? `${p.goals} Premier League Goals`
+        : p.cs ? `${p.cs} Premier League Clean Sheets`
+        : `${p.apps} Premier League Appearances`;
       fs.writeFileSync(path.join(OUT, file), page({
-        title: `${p.name} — Premier League Career Stats (Goals, Assists, Appearances)`,
+        title: `${p.name} — ${headline}${p.apps && p.goals ? ` in ${p.apps} Games` : ""} (Career Stats)`,
         desc: lede, canonical,
         h1: `${p.name} — Premier League Career Stats`, lede,
         body: `<table><tbody>
