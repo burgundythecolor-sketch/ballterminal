@@ -1107,11 +1107,13 @@ const DataService = {
         const t0 = performance.now();
         const stats = await FPL.playerStats();
         setStatus("FPL_API", true, performance.now() - t0);
-        /* official-accurate boards from data.js (event aggregation) take
-           precedence over FPL totals — but only while reasonably fresh,
-           so an abandoned snapshot can never mask live data */
+        /* goals & clean sheets stay live from FPL (official + complete).
+           Only the assists board is overlaid from data.js, where it is
+           aggregated from official per-goal assist attribution — and
+           only while that snapshot is fresh. */
         const age = LIVE?.meta?.generated ? Date.now() - new Date(LIVE.meta.generated) : Infinity;
-        const overlay = age < 7 * 864e5 ? LIVE?.players ?? {} : {};
+        const overlay = age < 7 * 864e5 && LIVE?.players?.assists?.length
+          ? { assists: LIVE.players.assists } : {};
         if (stats.goals[0]?.val > 0) return this._override({ ...stats, ...overlay });
       } catch (err) { console.warn("[FPL] players fallback:", err.message); }
     }

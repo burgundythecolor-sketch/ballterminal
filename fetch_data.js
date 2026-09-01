@@ -445,10 +445,15 @@ async function main() {
           fs.writeFileSync(SFILE, JSON.stringify(sa));
         } catch (err) { console.warn("      ! scorer archive:", err.message); }
       }
-      /* clean sheets: FPL bootstrap totals cover all matches (incl. any
-         event-data gaps) and match official GK counts — prefer them */
-      const fplCS = computePlayers(boot).cleansheets;
-      if (fplCS[0]?.val > 0) boards.cleansheets = fplCS;
+      /* Use each source where it is authoritative:
+         - goals & clean sheets: FPL season totals are official and
+           complete (event streams can miss a goal, which badly skews
+           the board early in a season)
+         - assists: keep the event aggregation, which uses the official
+           assist attribution rather than FPL's looser counting */
+      const fpl = computePlayers(boot);
+      if (fpl.goals[0]?.val > 0) boards.goals = fpl.goals;
+      if (fpl.cleansheets[0]?.val > 0) boards.cleansheets = fpl.cleansheets;
       return boards;
     })(),
     transfers: computeTransfers(boot),
